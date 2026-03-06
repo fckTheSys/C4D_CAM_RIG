@@ -6,8 +6,9 @@ Look_Target — виртуальный null, цель камеры; смешив
   Rot H/P/B применяются к FX_CAM (дочерний объект RS_CAM).
   RS_CAM всегда смотрит на Look_Target через Target Expression.
   FX_CAM наследует это направление и добавляет ручное смещение взгляда.
-  Shake (Vibrate) на FX_CAM накладывается поверх ручного поворота.
+  Shake — процедурный noise, применяется к FX_CAM (SetRelPos/SetRelRot). Vibrate не используется.
 """
+import math
 import c4d
 from c4d import utils
 from collections import namedtuple
@@ -18,7 +19,7 @@ from . import config
 
 RigObjects = namedtuple(
     "RigObjects",
-    "follow offset cam fx align vib rig target_a target_b look_target",
+    "follow offset cam fx align rig target_a target_b look_target",
 )
 
 
@@ -44,17 +45,21 @@ def _read_all_user_data(obj: c4d.BaseObject) -> Dict[str, Any]:
     return result
 
 
+_BASE_CHILD_NAMES = (config.TARGET_A_NAME, config.TARGET_B_NAME, config.LOOK_TARGET_NAME)
+
+
 def _collect_rig_named_children(rig: c4d.BaseObject) -> Dict[str, c4d.BaseObject]:
-    """Обходит прямых детей rig один раз, возвращает словарь имя→объект."""
-    needed = {config.TARGET_A_NAME, config.TARGET_B_NAME, config.LOOK_TARGET_NAME}
+    """Обходит прямых детей rig один раз. Поиск по префиксу для поддержки суффиксов (_01, _02)."""
     found: Dict[str, c4d.BaseObject] = {}
     child = rig.GetDown()
     while child is not None:
         name = child.GetName()
-        if name in needed:
-            found[name] = child
-            if len(found) == len(needed):
+        for base in _BASE_CHILD_NAMES:
+            if name.startswith(base):
+                found[base] = child
                 break
+        if len(found) == len(_BASE_CHILD_NAMES):
+            break
         child = child.GetNext()
     return found
 
@@ -105,15 +110,18 @@ def get_rig_objects(circle: c4d.BaseObject) -> Optional[RigObjects]:
         c4d.GePrint("[CamRig] ERROR: FX_CAM not found under RS_CAM")
         return None
 
-    align = follow.GetTag(c4d.Taligntospline)
+    # Удаляем Vibrate при обнаружении — shake только процедурный
     vib = fx.GetTag(c4d.Tvibrate)
+    if vib is not None:
+        vib.Remove()
+
+    align = follow.GetTag(c4d.Taligntospline)
     return RigObjects(
         follow=follow,
         offset=offset,
         cam=cam,
         fx=fx,
         align=align,
-        vib=vib,
         rig=rig,
         target_a=target_a,
         target_b=target_b,
@@ -142,43 +150,82 @@ def _apply_offset(offset: c4d.BaseObject, offx: Any, offy: Any, offz: Any) -> No
         offset.SetRelPos(c4d.Vector(offx, offy, offz))
 
 
-def _apply_rotation(fx: c4d.BaseObject, roth: Any, rotp: Any, rotb: Any) -> None:
-    """
-    Применяет Rot H/P/B к FX_CAM (дочерний RS_CAM).
-    RS_CAM смотрит на Look_Target через Target Expression;
-    FX_CAM наследует это направление и добавляет смещение взгляда.
-    Таким образом H/P/B — это угол ОТНОСИТЕЛЬНО направления на таргет, а не орбиты.
-    """
-    if roth is not None and rotp is not None and rotb is not None:
-        fx.SetRelRot(
-            c4d.Vector(
-                utils.DegToRad(roth),
-                utils.DegToRad(rotp),
-                utils.DegToRad(rotb),
-            )
-        )
+# Константы фокуса: стандартная камера C4D и Redshift
+_FOCAL_LENGTH_ID = getattr(c4d, "RSCAMERAOBJECT_FOCAL_LENGTH", None) or getattr(c4d, "CAMERA_FOCUS", None)
 
 
 def _apply_focal(cam: c4d.BaseObject, fx: c4d.BaseObject, focal: Any) -> None:
-    if focal is not None:
-        cam[c4d.CAMERA_FOCUS] = focal
-        fx[c4d.CAMERA_FOCUS] = focal
+    if focal is None or _FOCAL_LENGTH_ID is None:
+        return
+    try:
+        f = float(focal)
+        if cam is not None:
+            cam[_FOCAL_LENGTH_ID] = f
+        if fx is not None:
+            fx[_FOCAL_LENGTH_ID] = f
+    except (TypeError, AttributeError):
+        pass
+
+
+def _safe_float(val: Any, default: float) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _noise_1d(t: float, seed: float) -> float:
+    """Детерминированный плавный noise [-1, 1] от времени и seed."""
+    x = t + seed * 0.173
+    n1 = math.sin(x * 1.0 + seed * 1.31)
+    n2 = math.sin(x * 2.03 + seed * 2.17) * 0.5
+    n3 = math.sin(x * 4.17 + seed * 0.79) * 0.25
+    return (n1 + n2 + n3) / 1.75
 
 
 def _apply_shake(
-    vib: Optional[c4d.BaseTag],
+    fx: c4d.BaseObject,
+    doc: Optional[c4d.documents.BaseDocument],
     shake_enable: Any,
     shake_pos: Any,
     shake_rot: Any,
+    roth: Any,
+    rotp: Any,
+    rotb: Any,
 ) -> None:
-    if not vib:
+    """
+    Процедурный shake на FX_CAM: позиция и вращение от noise по времени.
+    Базовые Rot H/P/B из ud; при Shake Enable добавляется noise.
+    """
+    base_h = _safe_float(roth, config.DEFAULT_ROT_H)
+    base_p = _safe_float(rotp, config.DEFAULT_ROT_P)
+    base_b = _safe_float(rotb, config.DEFAULT_ROT_B)
+
+    if not shake_enable:
+        fx.SetRelPos(c4d.Vector(0, 0, 0))
+        fx.SetRelRot(c4d.Vector(utils.DegToRad(base_h), utils.DegToRad(base_p), utils.DegToRad(base_b)))
         return
-    if shake_enable and shake_pos is not None and shake_rot is not None:
-        vib[c4d.VIBRATEEXPRESSION_POS_AMPLITUDE] = c4d.Vector(shake_pos)
-        vib[c4d.VIBRATEEXPRESSION_ROT_AMPLITUDE] = c4d.Vector(shake_rot)
-    else:
-        vib[c4d.VIBRATEEXPRESSION_POS_AMPLITUDE] = c4d.Vector(0)
-        vib[c4d.VIBRATEEXPRESSION_ROT_AMPLITUDE] = c4d.Vector(0)
+
+    time_sec = 0.0
+    if doc is not None:
+        try:
+            time_sec = doc.GetTime().Get()
+        except Exception:
+            pass
+    amp_pos = max(0.0, _safe_float(shake_pos, config.DEFAULT_SHAKE_POS))
+    amp_rot = max(0.0, _safe_float(shake_rot, config.DEFAULT_SHAKE_ROT))
+    seed, freq = 1.0, 1.5
+    t = time_sec * freq
+
+    nx = _noise_1d(t + 0.0, seed + 11.0)
+    ny = _noise_1d(t + 3.7, seed + 23.0)
+    nz = _noise_1d(t + 7.9, seed + 37.0)
+
+    fx.SetRelPos(c4d.Vector(nx * amp_pos, ny * amp_pos, nz * amp_pos))
+    rot_h = base_h + nx * amp_rot
+    rot_p = base_p + ny * amp_rot
+    rot_b = base_b + nz * amp_rot
+    fx.SetRelRot(c4d.Vector(utils.DegToRad(rot_h), utils.DegToRad(rot_p), utils.DegToRad(rot_b)))
 
 
 def _apply_target_blend(
@@ -218,18 +265,39 @@ def _apply_target_blend(
 def main(op: c4d.BaseTag) -> None:
     """
     Вызывается каждый кадр Python Tag'ом на Main_Camera.
-    Один проход по User Data, один проход по детям riga — без повторных итераций.
+    Один проход по User Data, один проход по детям riga. Rotation и shake в _apply_shake.
     """
     circle = op.GetObject()
     objs = get_rig_objects(circle)
     if objs is None:
         return
 
+    doc = op.GetDocument()
     ud = _read_all_user_data(circle)
 
     _apply_orbit_radius(circle, objs.align, ud.get(config.UD_ORBIT), ud.get(config.UD_RADIUS))
     _apply_offset(objs.offset, ud.get(config.UD_OFFSET_X), ud.get(config.UD_OFFSET_Y), ud.get(config.UD_OFFSET_Z))
-    _apply_rotation(objs.fx, ud.get(config.UD_ROT_H), ud.get(config.UD_ROT_P), ud.get(config.UD_ROT_B))
     _apply_focal(objs.cam, objs.fx, ud.get(config.UD_FOCAL))
-    _apply_shake(objs.vib, ud.get(config.UD_SHAKE_ENABLE), ud.get(config.UD_SHAKE_POS), ud.get(config.UD_SHAKE_ROT))
+    _apply_shake(
+        objs.fx,
+        doc,
+        ud.get(config.UD_SHAKE_ENABLE),
+        ud.get(config.UD_SHAKE_POS),
+        ud.get(config.UD_SHAKE_ROT),
+        ud.get(config.UD_ROT_H),
+        ud.get(config.UD_ROT_P),
+        ud.get(config.UD_ROT_B),
+    )
     _apply_target_blend(objs, ud)
+
+
+# ---------------------------------------------------------------------------
+# ОБРАТНАЯ СОВМЕСТИМОСТЬ PYTHON TAG
+# ---------------------------------------------------------------------------
+
+def message(op: c4d.BaseTag, mid: int, data) -> bool:
+    """
+    Совместимость со старыми Python Tag, которые вызывают python_tag_logic.message().
+    Текущая версия рига не использует события message для логики обновления.
+    """
+    return True

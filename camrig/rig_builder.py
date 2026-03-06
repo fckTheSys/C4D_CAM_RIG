@@ -81,6 +81,22 @@ def add_link(
     return element
 
 
+def _lock_circle_transform(circle: c4d.BaseObject) -> None:
+    """Залочить позицию/вращение/масштаб circle — управление только через орбиту/UD."""
+    lock_pos = getattr(c4d, "ID_BASEOBJECT_REL_POSITION_LOCK", None)
+    lock_rot = getattr(c4d, "ID_BASEOBJECT_REL_ROTATION_LOCK", None)
+    lock_scale = getattr(c4d, "ID_BASEOBJECT_REL_SCALE_LOCK", None)
+    try:
+        if lock_pos is not None:
+            circle[lock_pos] = True
+        if lock_rot is not None:
+            circle[lock_rot] = True
+        if lock_scale is not None:
+            circle[lock_scale] = True
+    except (TypeError, AttributeError):
+        pass
+
+
 def _build_python_tag_source() -> str:
     """
     Код, который будет записан в Python Tag.
@@ -214,16 +230,12 @@ def build_cam_rig(
     cam.InsertTag(tgt)
     tgt[c4d.TARGETEXPRESSIONTAG_LINK] = aim
 
-    # ------------------------------------------------
-    # SHAKE
-    # ------------------------------------------------
-    vib = c4d.BaseTag(c4d.Tvibrate)
-    fx.InsertTag(vib)
-
-    vib[c4d.VIBRATEEXPRESSION_POS_ENABLE] = True
-    vib[c4d.VIBRATEEXPRESSION_ROT_ENABLE] = True
+    # Shake реализуется процедурно в Python Tag, Vibrate не создаём.
 
     _add_controller_user_data(circle, target_a, target_b)
+
+    # Лок трансформации circle — управляется только орбитой/радиусом через плагин
+    _lock_circle_transform(circle)
 
     # ------------------------------------------------
     # PYTHON TAG
