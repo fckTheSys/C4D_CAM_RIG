@@ -6,26 +6,28 @@ Look_Target — виртуальный null, цель камеры; смешив
   Rot H/P/B применяются к FX_CAM (дочерний объект RS_CAM).
   RS_CAM всегда смотрит на Look_Target через Target Expression.
   FX_CAM наследует это направление и добавляет ручное смещение взгляда.
-  Shake — процедурный noise, применяется к FX_CAM (SetRelPos/SetRelRot). Vibrate не используется.
+  Shake — процедурный noise на FX_CAM (SetRelPos/SetRelRot от времени и UD). Vibrate не используется.
 """
 import math
 import c4d
 from c4d import utils
-from collections import namedtuple
 from typing import Optional, Any, Dict
 
 from . import config
-
-
-RigObjects = namedtuple(
-    "RigObjects",
-    "follow offset cam fx align rig target_a target_b look_target",
-)
+from .rig_objects import RigObjects, get_rig_objects
 
 
 # ---------------------------------------------------------------------------
 # ОДНОРАЗОВЫЙ СБОР ДАННЫХ (вызывается один раз за кадр)
 # ---------------------------------------------------------------------------
+
+def _get_bc_name_safe(bc: c4d.BaseContainer) -> str:
+    """Читает DESC_NAME из BaseContainer без вызова .get() (BaseContainer не словарь)."""
+    try:
+        return bc[c4d.DESC_NAME] or ""
+    except Exception:
+        return ""
+
 
 def _read_all_user_data(obj: c4d.BaseObject) -> Dict[str, Any]:
     """
@@ -35,98 +37,14 @@ def _read_all_user_data(obj: c4d.BaseObject) -> Dict[str, Any]:
     """
     result: Dict[str, Any] = {}
     for desc_id, bc in obj.GetUserDataContainer():
-        name = bc[c4d.DESC_NAME]
+        name = _get_bc_name_safe(bc)
         if not name:
             continue
         try:
             result[name] = obj[desc_id]
-        except AttributeError:
+        except (AttributeError, TypeError):
             pass
     return result
-
-
-_BASE_CHILD_NAMES = (config.TARGET_A_NAME, config.TARGET_B_NAME, config.LOOK_TARGET_NAME)
-
-
-def _collect_rig_named_children(rig: c4d.BaseObject) -> Dict[str, c4d.BaseObject]:
-    """Обходит прямых детей rig один раз. Поиск по префиксу для поддержки суффиксов (_01, _02)."""
-    found: Dict[str, c4d.BaseObject] = {}
-    child = rig.GetDown()
-    while child is not None:
-        name = child.GetName()
-        for base in _BASE_CHILD_NAMES:
-            if name.startswith(base):
-                found[base] = child
-                break
-        if len(found) == len(_BASE_CHILD_NAMES):
-            break
-        child = child.GetNext()
-    return found
-
-
-def get_rig_objects(circle: c4d.BaseObject) -> Optional[RigObjects]:
-    """
-    Разрешает объекты рига от контроллера (circle).
-    Target_A, Target_B, Look_Target ищутся по имени — порядок в Outliner не важен.
-    Камерная цепочка (Follow → Offset → RS_CAM → FX_CAM) ищется позиционально.
-    При ошибке печатает диагностику в Script Log и возвращает None.
-    """
-    rig = circle.GetUp()
-    if rig is None:
-        c4d.GePrint("[CamRig] ERROR: Main_Camera has no parent (Cam_Rig missing?)")
-        return None
-
-    children = _collect_rig_named_children(rig)
-
-    target_a = children.get(config.TARGET_A_NAME)
-    if target_a is None:
-        c4d.GePrint("[CamRig] ERROR: '%s' not found under '%s'" % (config.TARGET_A_NAME, rig.GetName()))
-        return None
-
-    target_b = children.get(config.TARGET_B_NAME)
-    if target_b is None:
-        c4d.GePrint("[CamRig] ERROR: '%s' not found under '%s'" % (config.TARGET_B_NAME, rig.GetName()))
-        return None
-
-    look_target = children.get(config.LOOK_TARGET_NAME)
-    if look_target is None:
-        c4d.GePrint("[CamRig] ERROR: '%s' not found under '%s'" % (config.LOOK_TARGET_NAME, rig.GetName()))
-        return None
-
-    follow = circle.GetDown()
-    if follow is None:
-        c4d.GePrint("[CamRig] ERROR: Follow not found under Main_Camera")
-        return None
-    offset = follow.GetDown()
-    if offset is None:
-        c4d.GePrint("[CamRig] ERROR: Offset not found under Follow")
-        return None
-    cam = offset.GetDown()
-    if cam is None:
-        c4d.GePrint("[CamRig] ERROR: RS_CAM not found under Offset")
-        return None
-    fx = cam.GetDown()
-    if fx is None:
-        c4d.GePrint("[CamRig] ERROR: FX_CAM not found under RS_CAM")
-        return None
-
-    # Удаляем Vibrate при обнаружении — shake только процедурный
-    vib = fx.GetTag(c4d.Tvibrate)
-    if vib is not None:
-        vib.Remove()
-
-    align = follow.GetTag(c4d.Taligntospline)
-    return RigObjects(
-        follow=follow,
-        offset=offset,
-        cam=cam,
-        fx=fx,
-        align=align,
-        rig=rig,
-        target_a=target_a,
-        target_b=target_b,
-        look_target=look_target,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +113,7 @@ def _apply_shake(
 ) -> None:
     """
     Процедурный shake на FX_CAM: позиция и вращение от noise по времени.
-    Базовые Rot H/P/B из ud; при Shake Enable добавляется noise.
+    Базовые Rot H/P/B из UD; при Shake Enable добавляется noise поверх.
     """
     base_h = _safe_float(roth, config.DEFAULT_ROT_H)
     base_p = _safe_float(rotp, config.DEFAULT_ROT_P)
@@ -228,27 +146,41 @@ def _apply_shake(
     fx.SetRelRot(c4d.Vector(utils.DegToRad(rot_h), utils.DegToRad(rot_p), utils.DegToRad(rot_b)))
 
 
+def _apply_focus_distance(focus: Optional[c4d.BaseObject], distance: Any) -> None:
+    """Ставит фокус-объект внутри FX_CAM на дистанцию по оси вида: (0, 0, distance)."""
+    if focus is None or distance is None:
+        return
+    try:
+        d = max(1.0, float(distance))
+        focus.SetRelPos(c4d.Vector(0, 0, d))
+    except (TypeError, ValueError):
+        pass
+
+
 def _apply_target_blend(
     objs: RigObjects,
     ud: Dict[str, Any],
 ) -> None:
     """
-    Вычисляет позицию Look_Target как blend между Target A и Target B.
-    Использует уже считанный словарь ud — без повторных итераций по User Data.
+    Target_0 (Look_Target) перемещается в глобальные координаты объекта из UD link A или B.
+    - Поле A заполнено: Target_0 → pos(A).
+    - Оба поля A и B заполнены: Target_0 → blend(pos(A), pos(B)), 0%=A, 100%=B.
+    Вызывать только при включённом Use Target.
     """
     link_a = ud.get(config.UD_TARGET_A)
     link_b = ud.get(config.UD_TARGET_B)
     obj_a = link_a if isinstance(link_a, c4d.BaseObject) else objs.target_a
-    obj_b = link_b if isinstance(link_b, c4d.BaseObject) else objs.target_b
+    obj_b = link_b if isinstance(link_b, c4d.BaseObject) else None
 
-    pos_a = obj_a.GetMg().off
-    pos_b = obj_b.GetMg().off
+    pos_a = obj_a.GetMg().off if obj_a else None
+    pos_b = obj_b.GetMg().off if obj_b else None
 
-    use_target_b = ud.get(config.UD_USE_TARGET_B)
-    blend = ud.get(config.UD_TARGET_BLEND)
+    if pos_a is None:
+        return
 
-    if use_target_b and blend is not None:
-        t = max(0.0, min(100.0, float(blend))) / 100.0
+    if pos_b is not None:
+        blend = ud.get(config.UD_TARGET_BLEND)
+        t = max(0.0, min(100.0, float(blend) if blend is not None else 0.0)) / 100.0
         aim_pos = pos_a + (pos_b - pos_a) * t
     else:
         aim_pos = pos_a
@@ -273,11 +205,14 @@ def main(op: c4d.BaseTag) -> None:
         return
 
     doc = op.GetDocument()
-    ud = _read_all_user_data(circle)
+    ud = _read_all_user_data(objs.rig)  # UD на главном родителе (rig)
+    if not ud:
+        ud = _read_all_user_data(circle)  # Обратная совместимость: старые сцены с UD на circle
 
     _apply_orbit_radius(circle, objs.align, ud.get(config.UD_ORBIT), ud.get(config.UD_RADIUS))
     _apply_offset(objs.offset, ud.get(config.UD_OFFSET_X), ud.get(config.UD_OFFSET_Y), ud.get(config.UD_OFFSET_Z))
     _apply_focal(objs.cam, objs.fx, ud.get(config.UD_FOCAL))
+    _apply_focus_distance(objs.focus, ud.get(config.UD_FOCUS_DISTANCE))
     _apply_shake(
         objs.fx,
         doc,
@@ -288,7 +223,18 @@ def main(op: c4d.BaseTag) -> None:
         ud.get(config.UD_ROT_P),
         ud.get(config.UD_ROT_B),
     )
-    _apply_target_blend(objs, ud)
+
+    # Use target: вкл — камера смотрит на Look_Target (позиция A или blend A-B), выкл — свободная камера
+    use_target = ud.get(config.UD_USE_TARGET, config.DEFAULT_USE_TARGET)
+    free_camera = ud.get(config.UD_FREE_CAMERA, config.DEFAULT_FREE_CAMERA)
+    if objs.target_expr is not None:
+        if use_target and not free_camera:
+            objs.target_expr[c4d.TARGETEXPRESSIONTAG_LINK] = objs.look_target
+            _apply_target_blend(objs, ud)
+        else:
+            objs.target_expr[c4d.TARGETEXPRESSIONTAG_LINK] = None
+
+
 
 
 # ---------------------------------------------------------------------------
