@@ -1,6 +1,6 @@
 # CamRig — подробное саммари
 
-Версия плагина в коде: `camrig/config.py` (`PLUGIN_VERSION`, `PLUGIN_SLUG`). Сводка по всем плагинам workspace: **`../VERSIONS.txt`**.
+Версия плагина в коде: `camrig/config.py` (`PLUGIN_VERSION`, `PLUGIN_SLUG`). Корень репозитория: **[README.md](../README.md)**.
 
 ## 1. Назначение
 
