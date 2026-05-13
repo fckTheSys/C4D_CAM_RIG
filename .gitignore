@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Debug / local
+debug-*.log
+*.log
+
+# IDE
+.cursor/
+.vscode/
+.idea/

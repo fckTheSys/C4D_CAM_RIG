@@ -1,0 +1,55 @@
+{
+  "groups": [
+    {
+      "name": "Orbit",
+      "titlebar": true,
+      "params": [
+        { "type": "real", "name": "Orbit", "min": 0, "max": 360, "default": 0, "step": 0.1, "interface": "float_slider" },
+        { "type": "real", "name": "Radius", "min": 0, "max": 5000, "default": 500, "step": 1, "interface": "float_slider" }
+      ]
+    },
+    {
+      "name": "Transform",
+      "titlebar": true,
+      "params": [
+        { "type": "real", "name": "Offset X", "min": -2000, "max": 2000, "default": 0, "step": 1, "interface": "float_slider" },
+        { "type": "real", "name": "Offset Y", "min": -2000, "max": 2000, "default": 0, "step": 1, "interface": "float_slider" },
+        { "type": "real", "name": "Offset Z", "min": -2000, "max": 2000, "default": 0, "step": 1, "interface": "float_slider" },
+        { "type": "real", "name": "Rot H", "min": -180, "max": 180, "default": 0, "step": 0.1, "interface": "float" },
+        { "type": "real", "name": "Rot P", "min": -180, "max": 180, "default": 0, "step": 0.1, "interface": "float" },
+        { "type": "real", "name": "Rot B", "min": -180, "max": 180, "default": 0, "step": 0.1, "interface": "float" }
+      ]
+    },
+    {
+      "name": "Camera",
+      "titlebar": true,
+      "params": [
+        { "type": "real", "name": "Focal Length", "min": 10, "max": 200, "default": 36, "step": 0.1, "interface": "float_slider" },
+        { "type": "real", "name": "Focus Distance", "min": 1, "max": 100000, "default": 1000, "step": 1, "interface": "float_slider" }
+      ]
+    },
+    {
+      "name": "Shake",
+      "titlebar": true,
+      "params": [
+        { "type": "bool", "name": "Shake Enable", "default": false },
+        { "type": "real", "name": "Shake Pos", "min": 0, "max": 100, "default": 5, "step": 0.1, "interface": "float_slider" },
+        { "type": "real", "name": "Shake Rot", "min": 0, "max": 20, "default": 1, "step": 0.01, "interface": "float_slider" },
+        { "type": "real", "name": "Drift Pos", "min": 0, "max": 50, "default": 0, "step": 0.1, "interface": "float_slider" },
+        { "type": "real", "name": "Drift Rot", "min": 0, "max": 10, "default": 0, "step": 0.01, "interface": "float_slider" },
+        { "type": "real", "name": "Drift Frequency", "min": 0.01, "max": 1, "default": 0.08, "step": 0.01, "interface": "float_slider" }
+      ]
+    },
+    {
+      "name": "Target",
+      "titlebar": true,
+      "params": [
+        { "type": "bool", "name": "Use Target", "default": true },
+        { "type": "link", "name": "Target A", "animatable": false, "link_ref": "target_a" },
+        { "type": "link", "name": "Target B", "animatable": false, "link_ref": "target_b" },
+        { "type": "real", "name": "Target Blend", "min": 0, "max": 100, "default": 0, "step": 1, "interface": "float_slider" },
+        { "type": "bool", "name": "Free Camera", "default": false }
+      ]
+    }
+  ]
+}
