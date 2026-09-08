@@ -100,6 +100,8 @@ def _collect_rig_named_children(rig: c4d.BaseObject) -> Dict[str, c4d.BaseObject
 
 
 def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = False) -> Optional[RigObjects]:
+    if circle is None:
+        return None
     rig = circle.GetUp()
     if rig is None:
         return None
@@ -131,9 +133,6 @@ def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = False) -> Opt
         return None
 
     vib = fx.GetTag(c4d.Tvibrate)
-    if remove_vibrate and vib is not None:
-        vib.Remove()
-        vib = None
 
     focus = None
     child_fx = fx.GetDown()
@@ -287,8 +286,8 @@ def _apply_target_blend(
 ) -> None:
     link_a = ud.get(UD_TARGET_A)
     link_b = ud.get(UD_TARGET_B)
-    obj_a = link_a if isinstance(link_a, c4d.BaseObject) else objs.target_a
-    obj_b = link_b if isinstance(link_b, c4d.BaseObject) else None
+    obj_a = valid_target(link_a, objs) or objs.target_a
+    obj_b = valid_target(link_b, objs)
 
     pos_a = obj_a.GetMg().off if obj_a else None
     pos_b = obj_b.GetMg().off if obj_b else None
@@ -304,7 +303,9 @@ def _apply_target_blend(
         aim_pos = pos_a
 
     mg = objs.look_target.GetMg()
-    mg.off = aim_pos
+    aim_offset = c4d.Vector(*[_safe_float(ud.get(k), 0.0) for k in
+                             ("Aim Offset X", "Aim Offset Y", "Aim Offset Z")])
+    mg.off = aim_pos + objs.rig.GetMg().MulV(aim_offset)
     objs.look_target.SetMg(mg)
 
 
@@ -350,7 +351,10 @@ def _execute(op: c4d.BaseTag) -> None:
 
 def main() -> None:
     """Точка входа Python Tag в сцене (global op)."""
-    _execute(op)
+    if op.GetName() == "CamRig Focus 1.5":
+        execute_focus(op)
+    else:
+        _execute(op)
 
 
 def message(mid: int, data) -> bool:
