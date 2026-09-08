@@ -18,6 +18,9 @@ def _json(value):
     if isinstance(value, (str, int, float, bool)) or value is None: return value
     return str(value)
 
+def matrix_json(matrix):
+    return {"off":_json(matrix.off),"v1":_json(matrix.v1),"v2":_json(matrix.v2),"v3":_json(matrix.v3)}
+
 def rigs(doc):
     return [o for o in walk(doc.GetFirstObject()) if is_rig(o)]
 

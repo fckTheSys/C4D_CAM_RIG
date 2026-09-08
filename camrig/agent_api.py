@@ -3,11 +3,12 @@ import c4d
 import os
 from . import config
 from .agent_schema import CONTROL_SPECS, LINK_KEYS, validate_controls
-from .agent_state import resolve_rig, resolve_object, rig_state, scene_state, rigs
+from .agent_state import resolve_rig, resolve_object, rig_state, scene_state, rigs, matrix_json
 from .commands import ud_map, find_circle, upgrade_rig
 from .scene_support import undo_group, add_undo
 from .rig_reset import reset_rig_params
 from .rig_assemble import build_cam_rig
+from .diagnostics import inspect_rig
 
 def _response(doc, rig=None, changes=None, warnings=None, errors=None):
     return {"ok":not errors,"scene":{"document":doc.GetDocumentName(),"current_frame":doc.GetTime().GetFrame(doc.GetFps())},
@@ -113,6 +114,33 @@ def save_scene(doc, path, confirm=False):
     if not result: raise RuntimeError("Could not save Cinema 4D document")
     return _response(doc)
 
+def diagnostics(doc, rig_ref):
+    rig=resolve_rig(doc,rig_ref); ok,message=inspect_rig(doc,rig)
+    result=_response(doc,rig)
+    result["state"]={"inspector":{"ok":ok,"message":message}}
+    if not ok: result["warnings"].append(message)
+    return result
+
+def sample(doc, rig_ref, frames):
+    rig=resolve_rig(doc,rig_ref); circle=find_circle(rig); objs=__import__('camrig.rig_objects',fromlist=['get_rig_objects']).get_rig_objects(circle)
+    if objs is None: raise ValueError("STRUCTURE_UNSUPPORTED: incomplete rig")
+    original=doc.GetTime(); rows=[]; fps=doc.GetFps()
+    try:
+        for frame in frames:
+            t=c4d.BaseTime(float(frame),fps); doc.SetTime(t); doc.ExecutePasses(None,True,True,True,c4d.BUILDFLAGS_INTERNALRENDERER)
+            row={"frame":frame,"camera":matrix_json(objs.cam.GetMg()),"fx_camera":matrix_json(objs.fx.GetMg()),"focal_length":float(rig[ud_map(rig)[config.UD_FOCAL]])}
+            if objs.spring: row["spring_offset"]=matrix_json(objs.spring.GetMg())
+            rows.append(row)
+    finally:
+        doc.SetTime(original); doc.ExecutePasses(None,True,True,True,c4d.BUILDFLAGS_INTERNALRENDERER)
+    result=_response(doc,rig); result["state"]={"samples":rows}; return result
+
+def bake_camera(doc, rig_ref, confirm=False):
+    rig=resolve_rig(doc,rig_ref); minimum=doc.GetMinTime().GetFrame(doc.GetFps()); maximum=doc.GetMaxTime().GetFrame(doc.GetFps())
+    plan={"dry_run":not confirm,"frame_range":[minimum,maximum],"camera":rig_state(doc,rig,["camera"]).get("objects",{}).get("fx_camera"),"risk":"Procedural tags and Spring would be replaced by baked keys."}
+    if not confirm: result=_response(doc,rig); result["state"]={"bake":plan}; return result
+    raise ValueError("CONFIRMATION_REQUIRED: actual bake is not enabled until the verified bake command is selected")
+
 def reset(doc, rig_ref, group="all"):
     rig=resolve_rig(doc,rig_ref)
     groups=[group] if isinstance(group,str) else list(group)
@@ -128,6 +156,8 @@ def dispatch(doc, action, payload):
     if action=="set_root_transform": return set_root_transform(doc,payload["rig"],payload.get("transform",{}))
     if action=="set_keyframes": return set_keyframes(doc,payload["rig"],payload.get("tracks",{}),payload.get("interpolation","linear"),payload.get("replace_existing",False),payload.get("confirm",False))
     if action=="set_time": return set_time(doc,payload.get("frame"),payload.get("seconds"))
+    if action=="sample": return sample(doc,payload["rig"],payload.get("frames",[]))
+    if action=="diagnostics": return diagnostics(doc,payload["rig"])
     if action=="reset": return reset(doc,payload["rig"],payload.get("group","all"))
     if action=="upgrade":
         rig=resolve_rig(doc,payload["rig"])
@@ -140,4 +170,5 @@ def dispatch(doc, action, payload):
         return _response(doc,rig)
     if action=="duplicate": return duplicate(doc,payload["rig"],payload.get("name"))
     if action=="save_scene": return save_scene(doc,payload.get("path"),payload.get("confirm",False))
+    if action=="bake_camera": return bake_camera(doc,payload["rig"],payload.get("confirm",False))
     raise ValueError("Unsupported action: " + action)
