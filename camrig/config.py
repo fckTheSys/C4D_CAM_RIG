@@ -19,9 +19,14 @@ FOCUS_DISPLAY_MODE: int = 4
 # ID_BASEOBJECT_USECOLOR: 2 = Always (иначе цвет игнорируется)
 FOCUS_USECOLOR_MODE: int = 2
 
-PLUGIN_VERSION: str = "1.1"
+PLUGIN_SLUG: str = "camrig"
+PLUGIN_VERSION: str = "1.4.0"
+PLUGIN_BUILD_DATE: str = "2026-05-08"
 PLUGIN_NAME: str = "Cam Rig Builder"
 PLUGIN_HELP: str = "Create camera rig"
+
+# Дополнительные сообщения при сборке рига (Script Log)
+DEBUG_LOG: bool = False
 
 # Дефолтные значения для рига (используются при создании и при Reset)
 DEFAULT_ORBIT: float = 0.0
@@ -36,6 +41,9 @@ DEFAULT_FOCAL: float = 36.0
 DEFAULT_FOCUS_DISTANCE: float = 1000.0
 DEFAULT_SHAKE_POS: float = 5.0
 DEFAULT_SHAKE_ROT: float = 1.0
+DEFAULT_DRIFT_POS: float = 0.0
+DEFAULT_DRIFT_ROT: float = 0.0
+DEFAULT_DRIFT_FREQ: float = 0.08
 DEFAULT_TARGET_BLEND: float = 0.0
 DEFAULT_SHAKE_ENABLE: bool = False
 DEFAULT_USE_TARGET: bool = True
@@ -55,6 +63,9 @@ UD_FOCUS_DISTANCE: str = "Focus Distance"
 UD_SHAKE_ENABLE = "Shake Enable"
 UD_SHAKE_POS = "Shake Pos"
 UD_SHAKE_ROT = "Shake Rot"
+UD_DRIFT_POS = "Drift Pos"
+UD_DRIFT_ROT = "Drift Rot"
+UD_DRIFT_FREQ = "Drift Frequency"
 UD_TARGET_A = "Target A"
 UD_TARGET_B = "Target B"
 UD_USE_TARGET = "Use Target"
@@ -73,7 +84,7 @@ RESET_GROUP_KEYS: dict = {
     "transform": [UD_OFFSET_X, UD_OFFSET_Y, UD_OFFSET_Z, UD_ROT_H, UD_ROT_P, UD_ROT_B],
     "camera": [UD_FOCAL, UD_FOCUS_DISTANCE],
     "target": [UD_USE_TARGET, UD_TARGET_BLEND, UD_FREE_CAMERA],
-    "shake": [UD_SHAKE_ENABLE, UD_SHAKE_POS, UD_SHAKE_ROT],
+    "shake": [UD_SHAKE_ENABLE, UD_SHAKE_POS, UD_SHAKE_ROT, UD_DRIFT_POS, UD_DRIFT_ROT, UD_DRIFT_FREQ],
 }
 TARGET_A_NAME: str = "Target_A"
 TARGET_B_NAME: str = "Target_B"
@@ -81,6 +92,9 @@ LOOK_TARGET_NAME: str = "Look_Target"
 FOLLOW_NAME: str = "Follow"
 OFFSET_NAME: str = "Offset"
 FOCUS_NAME: str = "Focus"
+
+# Старые сцены: между Follow и Offset мог быть null Inertia_Follow — см. rig_objects.get_rig_objects
+LEGACY_INERTIA_FOLLOW_PREFIX: str = "Inertia_Follow"
 
 # Системный слой для служебных объектов всех ригов (один на документ)
 SYSTEM_LAYER_NAME: str = "hidenSysRig"
@@ -103,6 +117,9 @@ UD_DEFAULTS: dict = {
     UD_SHAKE_ENABLE: DEFAULT_SHAKE_ENABLE,
     UD_SHAKE_POS: DEFAULT_SHAKE_POS,
     UD_SHAKE_ROT: DEFAULT_SHAKE_ROT,
+    UD_DRIFT_POS: DEFAULT_DRIFT_POS,
+    UD_DRIFT_ROT: DEFAULT_DRIFT_ROT,
+    UD_DRIFT_FREQ: DEFAULT_DRIFT_FREQ,
     UD_USE_TARGET: DEFAULT_USE_TARGET,
     UD_TARGET_BLEND: DEFAULT_TARGET_BLEND,
     UD_FREE_CAMERA: DEFAULT_FREE_CAMERA,

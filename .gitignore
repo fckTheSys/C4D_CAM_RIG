@@ -1,2 +1,12 @@
 # Debug logs from instrumentation
 debug-*.log
+
+# Production build (tools/build_production_release.py)
+/release/
+
+# Local Python/Cinema 4D development artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.serena/cache/
+.serena/logs/

@@ -1,0 +1,207 @@
+{
+  "head": "1546ca8185a63769a670c96f95432f4e8647120c",
+  "status": [
+    " M .gitignore",
+    " D TZ_переключение_взгляда_камеры.md",
+    " M cam_rig_builder.pyp",
+    " M camrig/__init__.py",
+    " M camrig/config.py",
+    " M camrig/python_tag_logic.py",
+    " M camrig/rig_builder.py",
+    " M camrig/rig_objects.py",
+    " M camrig/user_data.py",
+    "?? .serena/",
+    "?? AGENTS.md",
+    "?? CHANGELOG.md",
+    "?? GITHUB.md",
+    "?? INSTALL.md",
+    "?? LICENSE",
+    "?? README.md",
+    "?? camrig/diagnostics.py",
+    "?? camrig/log.py",
+    "?? camrig/rig_assemble.py",
+    "?? camrig/rig_break.py",
+    "?? camrig/rig_reset.py",
+    "?? camrig/tag_embedded.py",
+    "?? camrig/ud_build.py",
+    "?? camrig/ud_template.json",
+    "?? camrig/ud_utils.py",
+    "?? docs/",
+    "?? res/",
+    "?? tools/"
+  ],
+  "files": [
+    {
+      "path": ".serena/.gitignore",
+      "sha256": "441F89B8BBA2252C9F7797EBC2FCA741B760712E1C8261A7AD5C282175DD52F2"
+    },
+    {
+      "path": ".serena/project.yml",
+      "sha256": "5FE221A592723CC745A85FF07AAF3AE8C29DE539D68A55E34598BE18CA2B4B99"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "EF32967C478883DF6DC375E00BB437E2132E6461C5307677D3A45157DD568CF4"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "0082C9C7B5C41990A4E5969BA21A943E91101ACFFD1119E0761616B8B43ECE66"
+    },
+    {
+      "path": "GITHUB.md",
+      "sha256": "5C97331295FE7356C5D407C20DA9AA3E36E174D2B9D9A061514EA2AC731C7DD6"
+    },
+    {
+      "path": "INSTALL.md",
+      "sha256": "ACE2A41AB904687CC7F541D9DFF7B14089A81820F96DB2D9CFF5CE2599A8A3DB"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "01634DA755729B7BA9ADB6FBD13284DB5FE943B4BDF9D6AC960662D0F5BA92C6"
+    },
+    {
+      "path": "README.md",
+      "sha256": "6FDD910F145F52A5DF251DA83220F37E94EE1E8A64D9F635B58E061ED918CDD6"
+    },
+    {
+      "path": "camrig/diagnostics.py",
+      "sha256": "2473B3865C045FDB6A288365C575A6CA7DD20BD758DB6D0219025428CC5783F0"
+    },
+    {
+      "path": "camrig/log.py",
+      "sha256": "2FBA28BCD1B5C60C04A1B5AD0679929099874868D4086855073CD084D80B16A0"
+    },
+    {
+      "path": "camrig/rig_assemble.py",
+      "sha256": "698E0638E9647A2B57B24887DE45E44B0B33E018FBB50C8A95695DF73D1EC04D"
+    },
+    {
+      "path": "camrig/rig_break.py",
+      "sha256": "821BDB90740A0EE2F702043DAB5EFFA3AA27BAD7AEBAB2B800C90C8811513D28"
+    },
+    {
+      "path": "camrig/rig_reset.py",
+      "sha256": "5352158905E82B665177DA2DB34D6C37EEE9F9C19CCD766638CED353E779900D"
+    },
+    {
+      "path": "camrig/tag_embedded.py",
+      "sha256": "D462D3AE8138B3BAC30C7ACBDB559FEB60080C6B4242175C3343D9AA8EED4B92"
+    },
+    {
+      "path": "camrig/ud_build.py",
+      "sha256": "BAD53CB6A10991109565F75152CA0A972E9ADBDFA029271BD1652FDFC5DB5DD1"
+    },
+    {
+      "path": "camrig/ud_template.json",
+      "sha256": "134E0641CD184C57665F9E7AD065A0D714A422C39B820F84E18152AA3680338A"
+    },
+    {
+      "path": "camrig/ud_utils.py",
+      "sha256": "9C47949EA97FEB8CF4E4C041215ABA8CF780C5EA2A9BE3504FAEBA5856666F85"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha256": "BED79FE90B1F37BC3BF49DCC50D907EE6BB3C419A9978F13BC31D66C5FD8E121"
+    },
+    {
+      "path": "docs/C4D_2026_Plugin_Cheat_Sheet.md",
+      "sha256": "EBB8BF59DE5DED07835CF23D9971B23EAC7C8D5ED7E5584C4302F365F9E61ED5"
+    },
+    {
+      "path": "docs/IMPROVEMENTS.md",
+      "sha256": "71E7A9749AB4629A59E8AD01E5CA35A8748936E7C1D2672A2BE824C203CDFC86"
+    },
+    {
+      "path": "docs/INFRASTRUCTURE_AUDIT_2026-09-08.md",
+      "sha256": "56063FC640A95E79E582FA5089E642B849D8FB83DED74911B6B188136E457D63"
+    },
+    {
+      "path": "docs/Interaction.md",
+      "sha256": "87AA3FA14FEF805EE873EDE43E8B4C34EA54661AEC8354D3377F65D99CC46F63"
+    },
+    {
+      "path": "docs/KNOWN_ISSUES_AND_FIXES.md",
+      "sha256": "8ADA0D594FC1EB492319DE58924913C7BA637CEDA95406DA3C69D2A5507529DA"
+    },
+    {
+      "path": "docs/MCP_SETUP.md",
+      "sha256": "DB7F1ACC08610FD5FCCFBFB627CAFEA6BF170399A49AFD9596BE164263097145"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "sha256": "3E58E86D9DA0257591ABBFFE4F51AB5B68ACBBDB1DEE8EAC4F7FEEEF7A371E7B"
+    },
+    {
+      "path": "docs/SUMMARY.md",
+      "sha256": "5F97F102D949CBE27EFFF63CFCFC9FDDD6F43589A5A8DCE315F351BBD2F0C0F5"
+    },
+    {
+      "path": "docs/Technical Specification.md",
+      "sha256": "D68CB6279BE4E0C866C37F565D1362C6E67C97DEA19EAE22D75FF4F8081026BD"
+    },
+    {
+      "path": "docs/UDref.md",
+      "sha256": "2D08747131CAFB728271367902B79CDAA9345B0C1AA40D6CA22E1AB1DA110986"
+    },
+    {
+      "path": "docs/User_dataElements.md",
+      "sha256": "A60202E67B8015200063F2184D3EA16E03DC837373D021B272CB6BB7022FCD10"
+    },
+    {
+      "path": "docs/deep-research-report 2.0.md",
+      "sha256": "B5DFBF7FFECE0546FF7B93336715CE4EA67251BD01F63BD4C2D86E3567CF8522"
+    },
+    {
+      "path": "res/description/ocamrigroot.h",
+      "sha256": "5C8E0462AEF9C461B2A0219D5E4D30546CD63DD32DA7AEFF60D7FCA7C538CAA8"
+    },
+    {
+      "path": "res/description/ocamrigroot.res",
+      "sha256": "9821501DF1F6235EED57BF9E92ED144C3BE0C4C995F57F8854C29A81571E4739"
+    },
+    {
+      "path": "res/strings_us/description/ocamrigroot.str",
+      "sha256": "E479B51A8BA8FA099F030081EADF8EA2F636AFD01BD9CCE2D924EAF152B8E585"
+    },
+    {
+      "path": "tools/PRODUCTION_NOTES.md",
+      "sha256": "D0A7A193964EC125EC5DBCE75DD51E67BDCA29F3836BF165726E98CA1348B318"
+    },
+    {
+      "path": "tools/build_production_release.py",
+      "sha256": "749EF9C8C140AFFEB8B837C043B4A341CA86463A2C4B8BA03B286E62F8F27CF0"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "E20EB6AEB1A9A7530D7F9F7947C16D01E8AFCC05E18AE777C32C6BE7B48A865F"
+    },
+    {
+      "path": "cam_rig_builder.pyp",
+      "sha256": "74CFA3EC3BBDCBC782AE7AAF4FCE5BA3BB0155498E641FC57DE7D03C728FE423"
+    },
+    {
+      "path": "camrig/__init__.py",
+      "sha256": "9831EF2A75D10495BDEBCD071EB1176317532E7AD8A1CC318F5D7A235913555A"
+    },
+    {
+      "path": "camrig/config.py",
+      "sha256": "A5EA5FC661677C8D24B671214AAFF4340F26C5931A2035E9E8530D66B7FDA5ED"
+    },
+    {
+      "path": "camrig/python_tag_logic.py",
+      "sha256": "9A986E88D951EC5247AAEE257088FE9BD682FCF06D95270652A47C6F43694F90"
+    },
+    {
+      "path": "camrig/rig_builder.py",
+      "sha256": "92817D942656D252979CD7D939977E931F152D2FA71FEED1F7892D6B0C776BE7"
+    },
+    {
+      "path": "camrig/rig_objects.py",
+      "sha256": "540E956F7EAC64AEA818EC4877A43C2FE0F45796D4A1E87165D13D7A57EFB1EE"
+    },
+    {
+      "path": "camrig/user_data.py",
+      "sha256": "FEF99F06E33156F8E705FD39C81B22248B8B34CA418AA7CBC3247A50485B75C6"
+    }
+  ]
+}
