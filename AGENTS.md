@@ -22,6 +22,16 @@ Use Cinema 4D's bundled Python 3.11.4 for compatibility checks. A normal system 
 - `exec_python` and Python operators provide process-level access to Cinema 4D and must only be enabled for a trusted development session.
 - Prefer path-based entity handles when names are ambiguous.
 
+## Agent MCP facade
+
+- Use `camrig_get_state` before mutations and pass the full rig path.
+- Combine related User Data changes in one `camrig_set_controls`, then evaluate
+  with `camrig_set_time` or `camrig_sample`.
+- The facade is stdio-only and delegates to the local Cinema 4D bridge; it does
+  not open an HTTP port. Install its pinned Node dependency from `tools/`.
+- Treat bake, overwrite-save, render output changes, replace-existing keys,
+  root-scale changes and batch operations as confirmation-required.
+
 ## 1.6 safeguards
 
 - Runtime/schema versions are separate. Keep the three portable stages plus Align with priorities -20 / -10 / -5 / 0 / 20. Spring is position-only and runs before Target and FX Shake/Drift.

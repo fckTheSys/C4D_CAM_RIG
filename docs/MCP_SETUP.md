@@ -33,3 +33,16 @@ python tools/build_production_release.py --development --keep-docs
 ```
 
 A successful compile under bundled Python does not prove a live c4d import. Import and scene behavior must be tested inside the running C4D process. See [1.6 acceptance](ACCEPTANCE_1_6.md) and [Follow Spring](SPRING_1_6.md).
+# CamRig Agent
+
+For direct agent control add `camrig-agent` using
+`tools/camrig_mcp_config.example.json`:
+
+```text
+transport: stdio
+command: node tools/camrig_mcp_server.js
+requires: cinema4d MCP bridge on 127.0.0.1:18710
+```
+
+This is a local proxy over the existing Cinema 4D MCP; it opens no additional
+network port. Use path-based CamRig tools documented in `AGENT_MCP.md`.

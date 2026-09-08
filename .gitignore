@@ -13,3 +13,5 @@ __pycache__/
 *.log
 *.c4d
 /tests/artifacts/
+# Local MCP proxy dependencies
+tools/node_modules/

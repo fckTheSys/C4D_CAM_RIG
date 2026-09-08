@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "camrig-agent": {
+      "command": "node",
+      "args": ["tools/camrig_mcp_server.js"],
+      "env": {
+        "C4D_MCP_HOST": "127.0.0.1",
+        "C4D_MCP_PORT": "18710",
+        "C4D_MCP_ENABLE_EXEC_PYTHON": "1",
+        "C4D_MCP_ENABLE_PYTHON_OPS": "1",
+        "C4D_MCP_TOKEN": "${C4D_MCP_TOKEN}"
+      }
+    }
+  }
+}
