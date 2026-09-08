@@ -1,11 +1,50 @@
 """Host-Python regression tests for the Cinema 4D-independent spring solver."""
 import math
 import unittest
+import ast
+from pathlib import Path
 
 from camrig.spring_math import SPRING_HZ, parameters, step_scalar, step_vector
 
 
 class SpringMathTests(unittest.TestCase):
+    def test_linear_forcing_against_independent_rk4(self):
+        for damping in (0, 65, 100):
+            omega, zeta = parameters(60, damping)
+            p, v = 0.0, 0.0
+            def rhs(t, x, velocity):
+                return velocity, -2*zeta*omega*velocity - omega**2*(x-t)
+            h = 1/10000
+            for i in range(10000):
+                t = i*h
+                a,b = rhs(t,p,v)
+                c,d = rhs(t+h/2,p+h*a/2,v+h*b/2)
+                e,f = rhs(t+h/2,p+h*c/2,v+h*d/2)
+                g,k = rhs(t+h,p+h*e,v+h*f)
+                p += h*(a+2*c+2*e+g)/6
+                v += h*(b+2*d+2*f+k)/6
+            actual = (0., 0.)
+            for i in range(120):
+                actual = step_scalar(*actual,i/120,(i+1)/120,1/120,omega,zeta)
+            self.assertAlmostEqual(actual[0],p,places=9)
+            self.assertAlmostEqual(actual[1],v,places=9)
+
+    def test_subinterval_composition_and_embedded_parity(self):
+        source = Path(__file__).resolve().parents[1]/'camrig/tag_embedded.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        ns = {'math': math}
+        funcs = [n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_spring_step_scalar']
+        exec(compile(ast.Module(body=funcs,type_ignores=[]),'embedded-math','exec'),ns)
+        for damping in (0,65,100):
+            omega,zeta = parameters(60,damping)
+            for fraction in (.00001,.3,.99999):
+                dt=1/120
+                middle=3+(7-3)*fraction
+                partial=step_scalar(1,2,3,middle,dt*fraction,omega,zeta)
+                combined=step_scalar(*partial,middle,7,dt*(1-fraction),omega,zeta)
+                full=step_scalar(1,2,3,7,dt,omega,zeta)
+                for a,b in zip(combined,full): self.assertAlmostEqual(a,b,places=9)
+                self.assertEqual(full,ns['_spring_step_scalar'](1,2,3,7,dt,omega,zeta))
     def test_parameter_mapping_and_finite_extremes(self):
         self.assertEqual(parameters(0, 0)[1], 0.2)
         self.assertEqual(parameters(100, 100)[1], 1.0)
@@ -49,22 +88,11 @@ class SpringMathTests(unittest.TestCase):
             if amount == 1:
                 self.assertEqual(blended, position)
 
-    def test_fixed_grid_is_independent_of_query_order(self):
-        omega, zeta = parameters(60, 65)
-
-        def solve_until(last):
-            p, v = 0.0, 0.0
-            result = {0: p}
-            for index in range(last):
-                target = 0.0 if index < 12 else 1.0
-                p, v = step_scalar(p, v, target, target, 1 / SPRING_HZ, omega, zeta)
-                result[index + 1] = p
-            return result
-
-        forward = solve_until(240)
-        reverse = solve_until(240)
-        for index in (240, 10, 180, 12, 60, 1):
-            self.assertAlmostEqual(forward[index], reverse[index], places=12)
+    def test_stationary_target_remains_at_rest(self):
+        for response in (0, 60, 100):
+            for damping in (0, 65, 100):
+                omega, zeta = parameters(response, damping)
+                self.assertEqual(step_scalar(42, 0, 42, 42, 1/120, omega, zeta), (42, 0))
 
 
 if __name__ == "__main__":

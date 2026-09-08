@@ -3,6 +3,7 @@ import math
 import c4d
 from . import config
 from .spring_math import SPRING_HZ, parameters, step_vector
+from .tag_embedded import _spring_time
 
 _DESC_COMPONENTS = (c4d.VECTOR_X, c4d.VECTOR_Y, c4d.VECTOR_Z)
 def _vector_tuple(value):
@@ -24,7 +25,8 @@ def sample_parameter(obj, desc, time, doc, default=0.0):
         return default
 
 def sample_component(obj, base, component, time, doc, default=0.0):
-    return float(sample_parameter(obj, _desc(base, component), time, doc, default))
+    from .tag_embedded import _spring_component
+    return _spring_component(obj, base, component, time, doc, default)
 
 def sample_transform(obj, time, doc):
     """Sample local transform tracks without changing document time."""
@@ -46,30 +48,12 @@ def sample_world_transform(obj, time, doc):
     return sample_world_transform(parent, time, doc) * local if parent is not None else local
 
 def source_supported(objs):
-    """Return false for expression-driven or animated-scale source objects."""
-    nodes = []
-    node = objs.rig
-    while node is not None:
-        nodes.append(node)
-        node = node.GetUp()
-    link_desc = _ud_desc(objs.rig, config.UD_ORBIT_CENTER)
-    link = objs.rig[link_desc] if link_desc is not None else None
-    if isinstance(link, c4d.BaseObject):
-        node = link
-        while node is not None:
-            nodes.append(node)
-            node = node.GetUp()
-    for node in nodes:
-        for component in _DESC_COMPONENTS:
-            if node.FindCTrack(_desc(c4d.ID_BASEOBJECT_REL_SCALE, component)) is not None:
-                return False
-        if node.GetTags():
-            return False
-    return True
+    from .tag_embedded import _spring_source_supported
+    return _spring_source_supported(objs)
 
 def _ud_desc(rig, name):
     for desc, bc in rig.GetUserDataContainer():
-        if bc[c4d.DESC_NAME] == name:
+        if bc[c4d.DESC_NAME] == name and desc[-1].dtype != c4d.DTYPE_GROUP:
             return desc
     return None
 
@@ -79,15 +63,8 @@ def sample_ud(rig, name, time, doc, default=0.0):
 _UNIT_CIRCLE = None
 
 def _unit_sampler():
-    global _UNIT_CIRCLE
-    circle = c4d.BaseObject(c4d.Osplinecircle)
-    circle[c4d.PRIM_PLANE] = c4d.PRIM_PLANE_XZ
-    circle[c4d.PRIM_CIRCLE_RADIUS] = 1.0
-    helper = c4d.utils.SplineHelp()
-    if not helper.InitSplineWith(circle, c4d.SPLINEHELPFLAGS_NONE):
-        raise RuntimeError("Cannot initialize the detached circle sampler.")
-    _UNIT_CIRCLE = circle
-    return helper
+    from .tag_embedded import _spring_sampler
+    return _spring_sampler()
 
 _AXIS_FIX = c4d.Matrix()
 _AXIS_FIX.v1 = c4d.Vector(0, 0, -1)
@@ -138,9 +115,9 @@ class SpringCache:
             self.sampler = None
 
     def evaluate(self, objs, time, doc, amount, response, damping, signature):
-        if amount <= 0.0:
+        if amount <= 0.0 or time.Get() < doc.GetMinTime().Get():
             return sample_base_position(objs, time, doc), sample_base_position(objs, time, doc)
-        self.invalidate(signature)
+        self.invalidate((signature, doc.GetMinTime().Get(), doc.GetFps()))
         if self.sampler is None:
             self.sampler = _unit_sampler()
         start = doc.GetMinTime().Get()
@@ -149,24 +126,27 @@ class SpringCache:
         index = int(math.floor((requested - start) / step + 1e-9))
         state = self.states.get(0)
         if state is None:
-            base = sample_base_position(objs, c4d.BaseTime(start), doc, self.sampler)
+            base = sample_base_position(objs, _spring_time(start), doc, self.sampler)
             state = (base, c4d.Vector(0))
             self.states[0] = state
         for current in range(max(self.states), index):
+            state = self.states[current]
             t0 = start + current * step
             t1 = t0 + step
-            q0 = sample_base_position(objs, c4d.BaseTime(t0), doc, self.sampler)
-            q1 = sample_base_position(objs, c4d.BaseTime(t1), doc, self.sampler)
-            mid = c4d.BaseTime((t0 + t1) * 0.5)
+            q0 = sample_base_position(objs, _spring_time(t0), doc, self.sampler)
+            q1 = sample_base_position(objs, _spring_time(t1), doc, self.sampler)
+            mid = _spring_time((t0 + t1) * 0.5)
             omega, zeta = parameters(sample_ud(objs.rig, config.UD_SPRING_RESPONSE, mid, doc, 60.0), sample_ud(objs.rig, config.UD_SPRING_DAMPING, mid, doc, 65.0))
             p, v = step_vector(_vector_tuple(state[0]), _vector_tuple(state[1]), _vector_tuple(q0), _vector_tuple(q1), step, omega, zeta)
             state = (c4d.Vector(*p), c4d.Vector(*v))
             self.states[current + 1] = state
         t0 = start + index * step
+        state = self.states[index]
         fraction = requested - t0
-        q0 = sample_base_position(objs, c4d.BaseTime(t0), doc, self.sampler)
-        q1 = sample_base_position(objs, c4d.BaseTime(t0 + step), doc, self.sampler)
-        mid = c4d.BaseTime(t0 + step * 0.5)
+        q0 = sample_base_position(objs, _spring_time(t0), doc, self.sampler)
+        q1 = sample_base_position(objs, _spring_time(t0 + step), doc, self.sampler)
+        mid = _spring_time(t0 + step * 0.5)
+        q1 = q0 + (q1 - q0) * (fraction / step)
         omega, zeta = parameters(sample_ud(objs.rig, config.UD_SPRING_RESPONSE, mid, doc, 60.0), sample_ud(objs.rig, config.UD_SPRING_DAMPING, mid, doc, 65.0))
         p, _ = step_vector(_vector_tuple(state[0]), _vector_tuple(state[1]), _vector_tuple(q0), _vector_tuple(q1), fraction, omega, zeta)
         target = sample_base_position(objs, time, doc, self.sampler)

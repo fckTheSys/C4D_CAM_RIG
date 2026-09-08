@@ -14,7 +14,8 @@ def step_scalar(position, velocity, target0, target1, dt, omega, zeta):
     if dt <= 0.0:
         return position, velocity
     slope = (target1 - target0) / dt
-    y = position - target0
+    lag = 2.0 * zeta * slope / omega
+    y = position - target0 + lag
     w = velocity - slope
     a = omega * zeta
     wd2 = max(0.0, omega * omega - a * a)
@@ -28,7 +29,7 @@ def step_scalar(position, velocity, target0, target1, dt, omega, zeta):
         e = math.exp(-a * dt)
         y1 = e * (y + (w + a * y) * dt)
         w1 = e * (w - a * (w + a * y) * dt)
-    return y1 + target1, w1 + slope
+    return y1 + target1 - lag, w1 + slope
 
 def step_vector(position, velocity, target0, target1, dt, omega, zeta):
     values = [step_scalar(position[i], velocity[i], target0[i], target1[i], dt, omega, zeta) for i in range(3)]

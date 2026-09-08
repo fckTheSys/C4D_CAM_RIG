@@ -16,7 +16,9 @@ The effect is intentionally one compact control group. Amount is the safe blend;
 
 The runtime samples the supported keyed trajectory at a fixed 120 samples per second and solves the three world-space position coordinates analytically. It does not rely on the order in which frames were visited. Random access, reverse playback and subframes therefore produce the same result as sequential playback. The cache is only an acceleration and is local to one Python Tag instance.
 
-The source trajectory includes Orbit, Radius, Orbit Rig, Offset and supported root/parent and Orbit Center transforms. Native circle parameterization is reproduced with a detached unit circle and `SplineHelp`; no helper geometry is inserted into the document. Shake and Drift are deliberately excluded from the source, so decorative noise is not fed back into the spring.
+The source trajectory includes Orbit, Radius, Orbit Rig, Offset and supported root/parent and Orbit Center transforms. A detached unit circle is initialized with SplineHelp. Its exact spline point and tangent are sampled using SplineLengthData.UniformToNatural: SplineHelp.GetMatrix alone approximates a line and did not match native Align within tolerance. No helper geometry is inserted into the document. Shake and Drift are excluded from the spring source.
+
+The analytic step includes the moving-target lag term 2*zeta*target_velocity/omega. Substeps interpolate the target endpoint by the fraction of the full interval, keeping the midpoint Response/Damping fixed. BaseTime uses an explicit rational denominator so C4D does not round the 120 Hz sample times to milliseconds.
 
 The hierarchy is:
 
@@ -26,7 +28,7 @@ The hierarchy is:
 
 ## Supported-source limitation
 
-The first version supports ordinary CTracks and positive constant scale. Sources driven by XPresso, Constraints, Dynamics, Python Tags, Motion Clips, Takes or animated scale are not used for historical reconstruction. Inspector reports the unsupported source and the ordinary CamRig remains active.
+The source guard rejects expression tags on source objects and their parents, animated or non-positive scale, frozen transforms and non-main Takes. Ordinary display tags are accepted. Inspector identifies the rejected object and reason. This is a conservative local dependency check, not a complete analysis of expressions elsewhere in a scene that can modify these objects.
 
 The expression never calls `SetTime`, recursively calls `ExecutePasses`, changes source User Data or changes document structure. Structural repair and migration remain explicit commands.
 
@@ -38,4 +40,6 @@ Break is blocked when Spring has a nonzero value or an animation track, because 
 
 ## Acceptance scenes
 
-Use three short scenes: Lift and Settle, Orbit Stop and Direction Change. Check targeting, focus, random-frame access, reverse playback, 24/25/30/60 FPS and save/reopen. The live harness is `tests/c4d_acceptance.py`; pure solver behavior is covered by `tests/test_spring_math.py`.
+The regression harnesses are tests/c4d_acceptance.py and tests/c4d_spring_acceptance.py. Spring tests now execute actual document passes, including native Align and Target; they do not call execute_spring directly. Pure math is checked against an independent RK4 integration in tests/test_spring_math.py.
+
+The earlier 1.6 development archives predate these corrections and should be replaced. Existing scenes retain their embedded code: reinstalling the plugin alone does not change it. Known 1.4/1.5 scenes can use Upgrade; older experimental schema-3 scenes with different code are refused rather than overwritten.

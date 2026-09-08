@@ -1,5 +1,8 @@
 # 1.6.0 — 2026-09-08 (local development, not published)
 
+- Review corrections: moving-target forcing term, subframe endpoint/time precision, exact native circle sampling, input cache signature, metadata stage roles and complete 1.5 runtime replacement during Upgrade.
+- Added independent RK4 comparison and actual-expression C4D checks for sampler parity, random subframes, FPS, renamed stages and schema-2 Undo/Redo.
+
 - Added Follow Spring with Amount, Response and Damping controls.
 - Added a deterministic 120 Hz analytic position solver with reproducible random-frame and subframe evaluation.
 - Added per-tag cache invalidation, supported-source diagnostics and a dedicated Spring_Offset stage before Shake/Drift.

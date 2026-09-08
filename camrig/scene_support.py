@@ -29,6 +29,11 @@ def set_priority(tag, value):
     tag[c4d.EXPRESSION_PRIORITY] = priority
 
 def configure_priorities(early, align, target, late, spring=None):
+    for tag, role in ((early, 1), (spring, 2), (late, 3)):
+        if tag is not None:
+            meta = tag.GetDataInstance().GetContainer(config.META_ID)
+            meta[10] = role
+            tag.GetDataInstance().SetContainer(config.META_ID, meta)
     for tag, value in ((early, -20), (align, -10), (spring, -5), (target, 0), (late, 20)):
         if tag is not None:
             set_priority(tag, value)

@@ -83,7 +83,7 @@ def upgrade_rig(doc, rig):
     tags = runtime_tags(circle)
     source = _build_python_tag_source()
     if schema_version(rig) == config.SCHEMA_VERSION:
-        if (len(tags) != 3 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME}
+        if (len(tags) != 3 or {t.GetDataInstance().GetContainer(config.META_ID).GetInt32(10) for t in tags} != {1, 2, 3}
                 or any(normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags)):
             raise ValueError("The 1.5 runtime was changed or a stage is missing. Refusing overwrite.")
         return False, "Rig is already up to date."
@@ -103,10 +103,19 @@ def upgrade_rig(doc, rig):
             for node in (rig, circle, early, late, objs.align, objs.target_expr):
                 add_undo(doc, c4d.UNDOTYPE_CHANGE, node)
             build_user_data_from_template(rig, {"groups": new_groups}, {})
+            meta = rig.GetDataInstance().GetContainer(config.META_ID)
+            meta[config.META_BACKUP_CODE] = early[c4d.TPYTHON_CODE]
+            meta[config.META_BACKUP_PRIORITY] = early[c4d.EXPRESSION_PRIORITY]
+            meta[4] = late[c4d.TPYTHON_CODE]
+            meta[5] = late[c4d.EXPRESSION_PRIORITY]
+            rig.GetDataInstance().SetContainer(config.META_ID, meta)
+            early[c4d.TPYTHON_CODE] = source
+            late[c4d.TPYTHON_CODE] = source
             spring_offset = c4d.BaseObject(c4d.Onull)
             spring_offset.SetName(config.SPRING_OFFSET_NAME)
             spring_offset.InsertUnder(objs.offset)
             add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            add_undo(doc, c4d.UNDOTYPE_HIERARCHY_PSR, objs.cam)
             objs.cam.InsertUnder(spring_offset)
             spring_tag = c4d.BaseTag(c4d.Tpython)
             spring_tag.SetName(config.SPRING_TAG_NAME)
@@ -166,6 +175,7 @@ def upgrade_rig(doc, rig):
             spring_offset.SetName(config.SPRING_OFFSET_NAME)
             spring_offset.InsertUnder(objs.offset)
             add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            add_undo(doc, c4d.UNDOTYPE_HIERARCHY_PSR, objs.cam)
             objs.cam.InsertUnder(spring_offset)
             spring_tag = c4d.BaseTag(c4d.Tpython)
             spring_tag.SetName(config.SPRING_TAG_NAME)
@@ -190,7 +200,7 @@ def break_preflight(rig):
     if not tags or any(normalized_source(t[c4d.TPYTHON_CODE]) not in allowed for t in tags):
         raise ValueError("Break refuses unknown or edited runtime tags.")
     ids = ud_map(rig)
-    keys = config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE, config.UD_FOCUS_OFFSET] + config.SPRING_KEYS
+    keys = config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE, config.UD_FOCUS_OFFSET, config.UD_SPRING_AMOUNT]
     for key in keys:
         desc = ids.get(key)
         if desc is not None and (rig.FindCTrack(desc) is not None or rig[desc] != config.UD_DEFAULTS[key]):

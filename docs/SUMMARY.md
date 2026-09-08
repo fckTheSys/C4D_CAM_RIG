@@ -10,7 +10,7 @@
 
 ## Вычисление
 
-Обе стадии содержат полный автономный tag_embedded.py без импорта camrig и чтения файлов. Не переименовывайте служебные теги: имя позднего тега определяет стадию.
+Три стадии содержат полный автономный tag_embedded.py без импорта camrig и чтения файлов. Роль хранится в metadata тега (namespace 1244567, поле 10): 1 — Runtime, 2 — Spring, 3 — Focus. Переименование тега не меняет его роль.
 
 | Стадия | Expression priority | Назначение |
 |---|---:|---|
@@ -34,7 +34,7 @@ Aim Offset задаётся в координатах корня и добавл
 
 Select Rig/Orbit/Targets и Look Through Camera разрешают риг по выделению. Если кандидатов несколько, диалог предлагает выбор; программные вызовы без интерактива возвращают ошибку неоднозначности.
 
-Upgrade — явная миграция известного legacy runtime. Repair восстанавливает отсутствующие компоненты известных schema-2/3 ригов и их приоритеты, не подменяет пользовательский код. Структурных удалений из expression нет.
+Upgrade — явная миграция известного legacy runtime. Repair восстанавливает отсутствующие компоненты известных schema-3 ригов и их приоритеты, не подменяет пользовательский код. Schema 2 сначала требует Upgrade. Структурных удалений из expression нет.
 
 Break не является Bake Camera. Он блокирует новые значения/анимацию Orbit Rig, Aim Offset, автофокус и новые ссылки, а также любой анимированный Orbit и значения вне одного оборота. Полный bake остаётся отдельной задачей.
 
@@ -52,4 +52,4 @@ HUD Show/Hide не реализованы; нативный HUD можно на�
 - diagnostics.py — Inspector и Repair.
 - tests/test_spring_math.py — независимые solver-тесты; tests/c4d_acceptance.py — сценарии в настоящем C4D; tools/check_project.py — статические проверки.
 
-Исторические Interaction, Technical Specification и deep-research-report не описывают гарантированные текущие возможности. Spline Position, Speed Offset, presets, arbitrary spline, spherical orbit, inertia и gizmo-контрол плоскости не реализованы.
+Исторические Interaction, Technical Specification и deep-research-report не описывают гарантированные текущие возможности. Spline Position, Speed Offset, presets, arbitrary spline, spherical orbit, вращательная инерция и gizmo-контрол плоскости не реализованы.

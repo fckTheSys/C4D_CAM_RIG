@@ -31,9 +31,9 @@ def inspect_rig(doc, rig=None):
             amount = rig[ud_map(rig)[config.UD_SPRING_AMOUNT]] if config.UD_SPRING_AMOUNT in ud_map(rig) else 0.0
             lines.append("Spring: " + ("active" if float(amount) != 0.0 else "bypassed") + " (Amount=" + str(amount) + ")")
             try:
-                from .spring import source_supported
-                if not source_supported(objs):
-                    lines.append("WARNING: Spring source uses expressions, tags or animated scale; Spring is bypassed.")
+                issue = tag_embedded._spring_source_issue(objs)
+                if issue:
+                    lines.append("WARNING: Spring bypassed: " + issue)
                     ok = False
             except Exception:
                 lines.append("WARNING: Spring source support could not be inspected.")
@@ -43,7 +43,7 @@ def inspect_rig(doc, rig=None):
     source = normalized_source(_build_python_tag_source())
     tags = runtime_tags(objs.circle)
     if schema_version(rig) == config.SCHEMA_VERSION:
-        if len(tags) != 3 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME}:
+        if len(tags) != 3 or {t.GetDataInstance().GetContainer(config.META_ID).GetInt32(10) for t in tags} != {1, 2, 3}:
             lines.append("WARNING: runtime stages missing or renamed.")
             ok = False
         if any(normalized_source(t[c4d.TPYTHON_CODE]) != source for t in tags):
@@ -75,9 +75,9 @@ def repair_selected_rig(doc, rig=None):
     source = _build_python_tag_source()
     known_names = ("CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME)
     tags = runtime_tags(circle)
-    if any(t.GetName() not in known_names or normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags):
+    if any(t.GetDataInstance().GetContainer(config.META_ID).GetInt32(10) not in (1, 2, 3) or normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags):
         return False, "Unknown or edited Python tag; refusing overwrite."
-    if len({t.GetName() for t in tags}) != len(tags):
+    if len({t.GetDataInstance().GetContainer(config.META_ID).GetInt32(10) for t in tags}) != len(tags):
         return False, "Duplicate runtime stages; resolve manually."
     changes = []
     with undo_group(doc):
@@ -108,7 +108,8 @@ def repair_selected_rig(doc, rig=None):
             changes.append("Focus")
         stages = {}
         for name in known_names:
-            tag = next((t for t in tags if t.GetName() == name), None)
+            role = {known_names[0]: 1, known_names[1]: 3, known_names[2]: 2}[name]
+            tag = next((t for t in tags if t.GetDataInstance().GetContainer(config.META_ID).GetInt32(10) == role), None)
             if tag is None:
                 tag = c4d.BaseTag(c4d.Tpython)
                 tag.SetName(name)
@@ -124,6 +125,7 @@ def repair_selected_rig(doc, rig=None):
             spring_offset.SetName(config.SPRING_OFFSET_NAME)
             spring_offset.InsertUnder(objs.offset)
             add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            add_undo(doc, c4d.UNDOTYPE_HIERARCHY_PSR, objs.cam)
             objs.cam.InsertUnder(spring_offset)
             changes.append(config.SPRING_OFFSET_NAME)
         configure_priorities(stages[known_names[0]], align, target, stages[known_names[1]], stages[known_names[2]])
