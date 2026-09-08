@@ -14,6 +14,13 @@ from typing import Optional, Any, Dict
 
 # --- Зеркало camrig/config.py: версию держать как PLUGIN_VERSION в config.py ---
 EMBEDDED_RUNTIME_VERSION = "1.5.0"
+SCHEMA_VERSION = 2
+NEW_UD_DEFAULTS = {
+    "Center X": 0.0, "Height": 0.0, "Center Z": 0.0,
+    "Plane Heading": 0.0, "Plane Tilt": 0.0, "Plane Bank": 0.0,
+    "Aim Offset X": 0.0, "Aim Offset Y": 0.0, "Aim Offset Z": 0.0,
+    "Focus Mode": 0, "Focus Offset": 0.0,
+}
 
 # --- Зеркало camrig/config.py (строки UD и имена объектов) ---
 DEFAULT_ORBIT = 0.0
@@ -382,7 +389,7 @@ def apply_orbit_plane(objs, ud):
     # Missing controls in unupgraded scenes must not reset a custom circle pose.
     if "Height" not in ud:
         return
-    pos = c4d.Vector(*[_safe_float(ud.get(key), 0.0) for key in ("Center X", "Height", "Center Z")])
+    pos = c4d.Vector(*[_safe_float(ud.get(key), NEW_UD_DEFAULTS[key]) for key in ("Center X", "Height", "Center Z")])
     center = valid_target(ud.get("Orbit Center"), objs)
     if center is not None:
         pos += ~objs.rig.GetMg() * center.GetMg().off
@@ -411,7 +418,7 @@ def execute_focus(tag):
     if objs is None:
         return
     ud = _read_all_user_data(objs.rig)
-    mode = int(_safe_float(ud.get("Focus Mode"), 0))
+    mode = int(_safe_float(ud.get("Focus Mode"), NEW_UD_DEFAULTS["Focus Mode"]))
     distance = max(1.0, _safe_float(ud.get(UD_FOCUS_DISTANCE), 1000.0))
     point = None
     if mode == 1 and ud.get(UD_USE_TARGET, True) and not ud.get(UD_FREE_CAMERA, False):
@@ -422,6 +429,11 @@ def execute_focus(tag):
             point = target.GetMg().off
     if point is not None:
         distance = focus_depth(objs.fx.GetMg(), point, ud.get("Focus Offset", 0.0))
-    _apply_focus_distance(objs.focus, distance)
+    if point is not None and objs.focus is not None:
+        # Auto distance is world-space; place the visual control on that same axis depth.
+        axis_length = objs.fx.GetMg().v3.GetLength()
+        objs.focus.SetRelPos(c4d.Vector(0, 0, distance / max(axis_length, 1e-12)))
+    else:
+        _apply_focus_distance(objs.focus, distance)
     for camera in (objs.cam, objs.fx):
         camera[camera_focus_id(camera)] = distance

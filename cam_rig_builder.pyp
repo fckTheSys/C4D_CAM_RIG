@@ -61,7 +61,7 @@ if os.path.isdir(os.path.join(_PLUGIN_ROOT, "camrig")):
         from camrig.rig_builder import break_rig_user_data as _break_ud
         from camrig.rig_builder import validate_ud_template_vs_config as _validate_ud_template
         from camrig.commands import choose_rig, find_circle, select_part, upgrade_rig, break_preflight
-        from camrig.scene_support import undo_group
+        from camrig.scene_support import undo_group, add_undo
         from camrig.diagnostics import (
             run_self_check as _run_self_check,
             inspect_rig as _inspect_rig,
@@ -277,8 +277,7 @@ class CamRigDialog(c4d.gui.GeDialog):
             _log("No null selected — rig will be created at origin.")
         try:
             with undo_group(doc):
-                rig = build_cam_rig(doc, position_global=position_global)
-                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, rig)
+                rig = build_cam_rig(doc, position_global=position_global, record_undo=True)
             if rig is not None:
                 doc.SetSelection(rig, c4d.SELECTION_NEW)
             c4d.EventAdd()
@@ -299,7 +298,7 @@ class CamRigDialog(c4d.gui.GeDialog):
             c4d.gui.MessageDialog("No Cam_Rig found. Select any object inside the rig first.")
             return
         with undo_group(doc):
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, rig)
             reset_rig_params(rig, [group_key])
         _log_ok("Reset %s: %s" % (group_key, rig.GetName()))
 
@@ -313,7 +312,7 @@ class CamRigDialog(c4d.gui.GeDialog):
             c4d.gui.MessageDialog("No Cam_Rig found. Select any object inside the rig first.")
             return
         with undo_group(doc):
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, rig)
             reset_rig_to_defaults(rig)
         _log_ok("Reset All: " + rig.GetName())
 

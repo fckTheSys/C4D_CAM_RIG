@@ -1,5 +1,6 @@
 """Break User Data: перенос анимации с rig на объекты, удаление Python Tag."""
 import c4d
+from .scene_support import add_undo
 
 from . import config
 from . import log
@@ -199,7 +200,7 @@ def break_rig_user_data(doc: c4d.documents.BaseDocument, circle: c4d.BaseObject)
     break_preflight(objs.rig)
     for node in (circle, objs.follow, objs.offset, objs.cam, objs.fx, objs.look_target, objs.focus, objs.align):
         if node is not None:
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, node)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, node)
     _transfer_rig_ud_keys_to_targets(doc, objs.rig, circle, objs)
     for obj in (objs.follow, objs.offset, objs.cam, objs.fx, objs.look_target, objs.focus):
         if obj is not None:
@@ -211,7 +212,7 @@ def break_rig_user_data(doc: c4d.documents.BaseDocument, circle: c4d.BaseObject)
     while tag is not None:
         next_tag = tag.GetNext()
         if tag.GetType() == c4d.Tpython:
-            doc.AddUndo(c4d.UNDOTYPE_DELETEOBJ, tag)
+            add_undo(doc, c4d.UNDOTYPE_DELETEOBJ, tag)
             tag.Remove()
         tag = next_tag
     c4d.EventAdd()

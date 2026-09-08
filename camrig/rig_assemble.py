@@ -6,6 +6,7 @@ import c4d
 
 from . import config
 from . import log
+from .scene_support import add_undo, configure_priorities, set_schema
 from .ud_build import (
     add_bool,
     add_group,
@@ -53,12 +54,8 @@ def _count_rigs(doc: c4d.documents.BaseDocument) -> int:
     count = 0
     if not doc:
         return 0
-    root = doc.GetFirstObject()
-    while root:
-        name = root.GetName()
-        if name == config.RIG_ROOT_NAME or name.startswith(config.RIG_ROOT_NAME + "_"):
-            count += 1
-        root = root.GetNext()
+    while doc.SearchObject(config.RIG_ROOT_NAME + "_" + str(count)) is not None:
+        count += 1
     return count
 
 
@@ -95,6 +92,7 @@ def _add_controller_user_data(
 def build_cam_rig(
     doc: c4d.documents.BaseDocument,
     position_global: Optional[c4d.Matrix] = None,
+    record_undo: bool = False,
 ) -> Optional[c4d.BaseObject]:
     """
     Строит камеру-риг в переданном документе.
@@ -110,13 +108,18 @@ def build_cam_rig(
     names = _make_rig_names(suffix)
 
     try:
-        rig = c4d.BaseObject(config.PLUGIN_ID_CAMRIG_ROOT)
-    except (TypeError, AttributeError, BaseException):
+        root_type = config.PLUGIN_ID_CAMRIG_ROOT if c4d.plugins.FindPlugin(config.PLUGIN_ID_CAMRIG_ROOT, c4d.PLUGINTYPE_OBJECT) else c4d.Onull
+        rig = c4d.BaseObject(root_type)
+    except (TypeError, AttributeError):
+        rig = c4d.BaseObject(c4d.Onull)
+    if rig is None:
         rig = c4d.BaseObject(c4d.Onull)
     rig.SetName(names["rig"])
     if position_global is not None:
         rig.SetMg(position_global)
     doc.InsertObject(rig)
+    if record_undo:
+        add_undo(doc, c4d.UNDOTYPE_NEWOBJ, rig)
 
     target_a = c4d.BaseObject(c4d.Onull)
     target_a.SetName(names["target_a"])
@@ -154,15 +157,20 @@ def build_cam_rig(
     offset.InsertUnder(follow)
 
     try:
-        cam = c4d.BaseObject(config.RS_CAMERA_ID)
+        camera_type = config.RS_CAMERA_ID if c4d.plugins.FindPlugin(config.RS_CAMERA_ID, c4d.PLUGINTYPE_OBJECT) else c4d.Ocamera
+        cam = c4d.BaseObject(camera_type)
     except (TypeError, AttributeError):
+        cam = c4d.BaseObject(c4d.Ocamera)
+    if cam is None:
         cam = c4d.BaseObject(c4d.Ocamera)
     cam.SetName(names["rs_cam"])
     cam.InsertUnder(offset)
 
     try:
-        fx = c4d.BaseObject(config.RS_CAMERA_ID)
+        fx = c4d.BaseObject(camera_type)
     except (TypeError, AttributeError):
+        fx = c4d.BaseObject(c4d.Ocamera)
+    if fx is None:
         fx = c4d.BaseObject(c4d.Ocamera)
     fx.SetName(names["fx_cam"])
     fx.InsertUnder(cam)
@@ -195,9 +203,13 @@ def build_cam_rig(
         sys_layer = c4d.documents.LayerObject()
         sys_layer.SetName(config.SYSTEM_LAYER_NAME)
         sys_layer.InsertUnder(layer_root)
+        if record_undo:
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, sys_layer)
     unique_layer = c4d.documents.LayerObject()
     unique_layer.SetName(names["main_camera"])
     unique_layer.InsertUnder(layer_root)
+    if record_undo:
+        add_undo(doc, c4d.UNDOTYPE_NEWOBJ, unique_layer)
     follow.SetLayerObject(sys_layer)
     offset.SetLayerObject(sys_layer)
     circle.SetLayerObject(sys_layer)
@@ -217,7 +229,6 @@ def build_cam_rig(
     circle.InsertTag(py)
     py.SetName("CamRig Runtime 1.5")
     py[c4d.TPYTHON_CODE] = source
-    from .scene_support import configure_priorities, set_schema
     late = c4d.BaseTag(c4d.Tpython)
     late.SetName(config.FOCUS_TAG_NAME)
     late[c4d.TPYTHON_CODE] = source

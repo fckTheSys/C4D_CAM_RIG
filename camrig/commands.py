@@ -4,7 +4,7 @@ from pathlib import Path
 import c4d
 from . import config
 from .rig_objects import get_rig_objects
-from .scene_support import undo_group, schema_version, set_schema, configure_priorities
+from .scene_support import add_undo, undo_group, schema_version, set_schema, configure_priorities
 from .ud_build import load_ud_template, build_user_data_from_template, set_real_limits
 from .rig_assemble import _build_python_tag_source
 
@@ -83,7 +83,8 @@ def upgrade_rig(doc, rig):
     tags = runtime_tags(circle)
     source = _build_python_tag_source()
     if schema_version(rig) == config.SCHEMA_VERSION:
-        if (len(tags) != 2 or any(normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags)):
+        if (len(tags) != 2 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME}
+                or any(normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags)):
             raise ValueError("The 1.5 runtime was changed or a stage is missing. Refusing overwrite.")
         return False, "Rig is already up to date."
     if schema_version(rig) != 0:
@@ -111,7 +112,7 @@ def upgrade_rig(doc, rig):
     early = tags[0]
     with undo_group(doc):
         for node in (rig, circle, early, objs.align, objs.target_expr):
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, node)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, node)
         try:
             meta = rig.GetDataInstance().GetContainer(config.META_ID)
             meta[config.META_BACKUP_CODE] = early[c4d.TPYTHON_CODE]
@@ -133,12 +134,12 @@ def upgrade_rig(doc, rig):
             late.SetName(config.FOCUS_TAG_NAME)
             late[c4d.TPYTHON_CODE] = source
             circle.InsertTag(late)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, late)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, late)
             configure_priorities(early, objs.align, objs.target_expr, late)
             set_schema(rig)
             # Structural legacy cleanup belongs to this command, not expressions.
             if objs.vib:
-                doc.AddUndo(c4d.UNDOTYPE_DELETEOBJ, objs.vib)
+                add_undo(doc, c4d.UNDOTYPE_DELETEOBJ, objs.vib)
                 objs.vib.Remove()
         except Exception:
             # End the undo group before rolling it back.
@@ -146,6 +147,11 @@ def upgrade_rig(doc, rig):
     return True, "Upgraded to 1.5; existing User Data and tracks preserved."
 
 def break_preflight(rig):
+    tags = runtime_tags(find_circle(rig))
+    allowed = [normalized_source(_build_python_tag_source()),
+               normalized_source(Path(__file__).with_name("legacy_140.txt").read_text(encoding="utf-8"))]
+    if not tags or any(normalized_source(t[c4d.TPYTHON_CODE]) not in allowed for t in tags):
+        raise ValueError("Break refuses unknown or edited runtime tags.")
     ids = ud_map(rig)
     keys = config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE, config.UD_FOCUS_OFFSET]
     for key in keys:

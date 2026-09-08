@@ -4,7 +4,7 @@ from . import config, tag_embedded
 from .commands import choose_rig, find_circle, ud_map, runtime_tags, normalized_source
 from .rig_objects import get_rig_objects
 from .rig_assemble import _build_python_tag_source
-from .scene_support import schema_version, undo_group, configure_priorities
+from .scene_support import add_undo, schema_version, undo_group, configure_priorities
 
 def run_self_check():
     from .ud_build import validate_ud_template_vs_config
@@ -70,26 +70,26 @@ def repair_selected_rig(doc, rig=None):
         if align is None:
             align = c4d.BaseTag(c4d.Taligntospline)
             objs.follow.InsertTag(align)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, align)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, align)
             changes.append("Align")
         else:
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, align)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, align)
         align[c4d.ALIGNTOSPLINETAG_LINK] = circle
         align[c4d.ALIGNTOSPLINETAG_AXIS] = 3
         align[c4d.ALIGNTOSPLINETAG_TANGENTIAL] = True
         if target is None:
             target = c4d.BaseTag(c4d.Ttargetexpression)
             objs.cam.InsertTag(target)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, target)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, target)
             changes.append("Target")
         else:
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, target)
+            add_undo(doc, c4d.UNDOTYPE_CHANGE, target)
         target[c4d.TARGETEXPRESSIONTAG_LINK] = objs.look_target
         if objs.focus is None:
             focus = c4d.BaseObject(c4d.Onull)
             focus.SetName(config.FOCUS_NAME)
             focus.InsertUnder(objs.fx)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, focus)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, focus)
             changes.append("Focus")
         stages = {}
         for name in known_names:
@@ -99,14 +99,14 @@ def repair_selected_rig(doc, rig=None):
                 tag.SetName(name)
                 tag[c4d.TPYTHON_CODE] = source
                 circle.InsertTag(tag)
-                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, tag)
+                add_undo(doc, c4d.UNDOTYPE_NEWOBJ, tag)
                 changes.append(name)
             else:
-                doc.AddUndo(c4d.UNDOTYPE_CHANGE, tag)
+                add_undo(doc, c4d.UNDOTYPE_CHANGE, tag)
             stages[name] = tag
         configure_priorities(stages[known_names[0]], align, target, stages[known_names[1]])
         if objs.vib:
-            doc.AddUndo(c4d.UNDOTYPE_DELETEOBJ, objs.vib)
+            add_undo(doc, c4d.UNDOTYPE_DELETEOBJ, objs.vib)
             objs.vib.Remove()
             changes.append("removed legacy Vibrate")
     return True, "Repair: priorities/links checked; " + (", ".join(changes) or "no missing components.")
