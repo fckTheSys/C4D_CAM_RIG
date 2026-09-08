@@ -25,7 +25,7 @@ from pathlib import Path
 
 # tag_embedded.py — текст для Python Tag; __init__.py — пакет camrig (иначе from camrig import config падает)
 KEEP_PY_SOURCES = frozenset({"tag_embedded.py", "__init__.py"})
-SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".cursor", "tools", "release", "tests"})
+SKIP_DIR_NAMES = frozenset({".git", ".serena", "__pycache__", ".pytest_cache", ".cursor", "tools", "release", "tests"})
 
 
 def _plugin_root() -> Path:
@@ -39,6 +39,9 @@ def _find_c4d_python_exe() -> Path | None:
         base = pf / ("Maxon Cinema 4D " + year)
         if not base.is_dir():
             continue
+        bundled = base / "resource/modules/python/libs/win64/python.exe"
+        if bundled.is_file():
+            return bundled
         for sub in ("python311", "python310", "python312", "python313"):
             exe = base / "resource" / "modules" / "python" / "libs" / sub / "python.exe"
             if exe.is_file():
@@ -61,17 +64,21 @@ def _read_version(root: Path) -> str:
 
 def _copy_sources(src: Path, dst: Path, keep_docs: bool) -> None:
     if dst.exists():
-        shutil.rmtree(dst)
+        raise FileExistsError("Refusing to overwrite an existing bundle: %s" % dst)
     dst.mkdir(parents=True)
     for item in src.iterdir():
         name = item.name
         if name in SKIP_DIR_NAMES:
             continue
         if item.is_dir():
+            if name not in ("camrig", "res", "docs"):
+                continue
             if name == "docs" and not keep_docs:
                 continue
-            shutil.copytree(item, dst / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copytree(item, dst / name, ignore=shutil.ignore_patterns("__pycache__", ".serena", ".cursor", "*.pyc", "*.log", "*.c4d", "baseline-*.json", "INFRASTRUCTURE_AUDIT*"))
         else:
+            if name not in ("cam_rig_builder.pyp", "README.md", "INSTALL.md", "CHANGELOG.md", "LICENSE"):
+                continue
             if name.endswith(".md") and not keep_docs:
                 continue
             shutil.copy2(item, dst / name)
@@ -199,6 +206,8 @@ debug-*.log
 
 
 def _zip_folder(folder: Path, zip_path: Path) -> None:
+    if zip_path.exists():
+        raise FileExistsError("Refusing to overwrite ZIP: %s" % zip_path)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(folder.rglob("*")):
@@ -215,6 +224,7 @@ def main() -> int:
     ap.add_argument("--keep-docs", action="store_true", help="Копировать папку docs/")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--skip-verify", action="store_true")
+    ap.add_argument("--development", action="store_true", help="Private sources-only bundle; no generated commercial license or public release.")
     ap.add_argument(
         "--sources-only",
         action="store_true",
@@ -228,11 +238,14 @@ def main() -> int:
         help="python.exe из установки Cinema 4D (рекомендуется для совместимости .pyc)",
     )
     args = ap.parse_args()
+    if args.development:
+        args.sources_only = True
 
     root = _plugin_root()
     version = _read_version(root)
     out_root = args.out_root or (root.parent.parent / "release")
-    dest = out_root / ("CamRig_%s_production" % version.replace(".", "_"))
+    suffix = "development" if args.development else "production"
+    dest = out_root / ("CamRig_%s_%s" % (version.replace(".", "_"), suffix))
 
     print("Source:", root)
     print("Dest:  ", dest)
@@ -260,7 +273,15 @@ def main() -> int:
     else:
         print("Mode: sources-only (все .py сохранены, bytecode не требуется).")
 
-    _write_artifacts(dest, version, sources_only=args.sources_only)
+    if args.development:
+        (dest / "DEVELOPMENT_NOTICE.txt").write_text(
+            "CamRig " + version + " private development build. Not a public release.\n"
+            "The repository MIT LICENSE conflicts with the existing production builder's commercial text.\n"
+            "No licensing decision has been made; do not distribute until the owner resolves it.\n"
+            "See docs/ACCEPTANCE_1_5.md for verified scope and open HUD/manual acceptance items.\n",
+            encoding="utf-8")
+    else:
+        _write_artifacts(dest, version, sources_only=args.sources_only)
 
     if not args.skip_verify:
         if args.sources_only:
@@ -269,7 +290,7 @@ def main() -> int:
             _verify_layout(dest)
 
     if not args.no_zip:
-        zp = out_root / ("CamRig_%s_production.zip" % version.replace(".", "_"))
+        zp = out_root / ("CamRig_%s_%s.zip" % (version.replace(".", "_"), suffix))
         _zip_folder(dest, zp)
         print("ZIP:", zp)
 

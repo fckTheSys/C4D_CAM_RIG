@@ -10,3 +10,6 @@ __pycache__/
 .pytest_cache/
 .serena/cache/
 .serena/logs/
+*.log
+*.c4d
+/tests/artifacts/
