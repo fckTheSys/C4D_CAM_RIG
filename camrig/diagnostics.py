@@ -1,145 +1,112 @@
-# -*- coding: utf-8 -*-
+"""Read-only diagnostics and explicit, undoable repair of known schema-2 rigs."""
 import c4d
-
-from . import config
+from . import config, tag_embedded
+from .commands import choose_rig, find_circle, ud_map, runtime_tags, normalized_source
 from .rig_objects import get_rig_objects
+from .rig_assemble import _build_python_tag_source
+from .scene_support import schema_version, undo_group, configure_priorities
 
+def run_self_check():
+    from .ud_build import validate_ud_template_vs_config
+    validate_ud_template_vs_config()
+    return ["CamRig " + config.PLUGIN_VERSION, "Runtime " + tag_embedded.EMBEDDED_RUNTIME_VERSION,
+            "Schema " + str(config.SCHEMA_VERSION), "UD template checked"]
 
-def run_self_check() -> list[str]:
-    lines = ["%s v%s self check" % (config.PLUGIN_NAME, config.PLUGIN_VERSION)]
-    try:
-        from . import tag_embedded
-        emb = getattr(tag_embedded, "EMBEDDED_RUNTIME_VERSION", None)
-    except Exception:
-        emb = None
-    lines.append("Embedded runtime: %s" % (emb or "MISSING"))
-    if emb != config.PLUGIN_VERSION:
-        lines.append("WARNING: embedded runtime version differs from PLUGIN_VERSION.")
-    lines.append("CamRigRoot plugin ID: %s" % config.PLUGIN_ID_CAMRIG_ROOT)
-    lines.append("Main plugin ID: %s" % config.PLUGIN_ID)
-    return lines
-
-
-def inspect_rig(doc) -> tuple[bool, str]:
-    if doc is None:
-        return False, "No active document."
-    rig = _find_rig(doc)
-    if rig is None:
-        return False, "No Cam_Rig found. Select any object inside the rig first."
-    circle = _find_main_camera_for_rig(rig)
-    if circle is None:
-        return False, "Rig found: %s\nERROR: Main_Camera not found." % rig.GetName()
-    objs = get_rig_objects(circle, remove_vibrate=False)
-    lines = ["Rig Inspector:", "Rig: " + rig.GetName(), "Main camera: " + circle.GetName()]
+def inspect_rig(doc, rig=None):
+    rig = rig or choose_rig(doc)
+    objs = get_rig_objects(find_circle(rig))
     if objs is None:
-        lines.append("ERROR: Rig hierarchy cannot be resolved.")
-        return False, "\n".join(lines)
-
-    checks = (
-        ("Target A", objs.target_a),
-        ("Target B", objs.target_b),
-        ("Look Target", objs.look_target),
-        ("Follow", objs.follow),
-        ("Offset", objs.offset),
-        ("RS_CAM", objs.cam),
-        ("FX_CAM", objs.fx),
-        ("Align tag", objs.align),
-        ("Target tag", objs.target_expr),
-        ("Focus", objs.focus),
-    )
+        return False, "Incomplete hierarchy; repair cannot rebuild it safely."
+    lines = ["Rig: " + rig.GetName(), "Schema: " + str(schema_version(rig))]
     ok = True
-    for label, obj in checks:
-        if obj is None:
+    for key in ("target_a", "target_b", "look_target", "follow", "offset", "cam", "fx", "align", "target_expr", "focus"):
+        if getattr(objs, key) is None:
+            lines.append("MISSING: " + key)
             ok = False
-            lines.append("MISSING: " + label)
-        else:
-            lines.append("OK: " + label)
-    first_child = objs.follow.GetDown() if objs.follow else None
-    if first_child and first_child.GetName().startswith(config.LEGACY_INERTIA_FOLLOW_PREFIX):
-        lines.append("Legacy: Inertia_Follow detected.")
-    try:
-        from . import tag_embedded
-        lines.append("Embedded runtime: " + str(getattr(tag_embedded, "EMBEDDED_RUNTIME_VERSION", "?")))
-    except Exception:
-        lines.append("Embedded runtime: unavailable")
+    if schema_version(rig) == 0:
+        lines.append("Legacy rig: use Upgrade Selected Rig; no automatic scene changes.")
+    source = normalized_source(_build_python_tag_source())
+    tags = runtime_tags(objs.circle)
+    if schema_version(rig) == config.SCHEMA_VERSION:
+        if len(tags) != 2 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME}:
+            lines.append("WARNING: runtime stages missing or renamed.")
+            ok = False
+        if any(normalized_source(t[c4d.TPYTHON_CODE]) != source for t in tags):
+            lines.append("WARNING: embedded runtime edited or outdated.")
+            ok = False
+    ids = ud_map(rig)
+    for key in (config.UD_TARGET_A, config.UD_TARGET_B, config.UD_ORBIT_CENTER, config.UD_FOCUS_TARGET):
+        value = rig[ids[key]] if key in ids else None
+        if value is not None and tag_embedded.valid_target(value, objs) is None:
+            lines.append("WARNING: " + key + " rejected: cross-document or camera-driven descendant creates a dependency cycle.")
+            ok = False
+    if config.UD_FOCUS_MODE in ids and rig[ids[config.UD_FOCUS_MODE]] == 2:
+        if tag_embedded.valid_target(rig[ids[config.UD_FOCUS_TARGET]], objs) is None:
+            lines.append("WARNING: Focus Target unavailable; manual distance is used.")
+    if (objs.look_target.GetMg().off - objs.cam.GetMg().off).GetLength() < 1e-8:
+        lines.append("WARNING: camera and look point coincide; aim direction is undefined.")
+    if objs.vib:
+        lines.append("WARNING: legacy Vibrate found; use Repair/Upgrade.")
     return ok, "\n".join(lines)
 
-
-def repair_selected_rig(doc) -> tuple[bool, str]:
-    if doc is None:
-        return False, "No active document."
-    rig = _find_rig(doc)
-    if rig is None:
-        return False, "No Cam_Rig found."
-    circle = _find_main_camera_for_rig(rig)
-    if circle is None:
-        return False, "Main_Camera not found; repair cannot safely rebuild hierarchy."
-
-    changed = []
-    objs = get_rig_objects(circle, remove_vibrate=False)
+def repair_selected_rig(doc, rig=None):
+    rig = rig or choose_rig(doc)
+    if schema_version(rig) != config.SCHEMA_VERSION:
+        return False, "Legacy/unknown schema: use Upgrade; Repair will not rewrite its runtime."
+    circle = find_circle(rig)
+    objs = get_rig_objects(circle)
     if objs is None:
-        return False, "Rig hierarchy cannot be resolved enough for safe repair."
-
-    if objs.align is None and objs.follow is not None:
-        align = c4d.BaseTag(c4d.Taligntospline)
-        objs.follow.InsertTag(align)
+        return False, "Incomplete hierarchy; cannot safely reconstruct it."
+    source = _build_python_tag_source()
+    known_names = ("CamRig Runtime 1.5", config.FOCUS_TAG_NAME)
+    tags = runtime_tags(circle)
+    if any(t.GetName() not in known_names or normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags):
+        return False, "Unknown or edited Python tag; refusing overwrite."
+    if len({t.GetName() for t in tags}) != len(tags):
+        return False, "Duplicate runtime stages; resolve manually."
+    changes = []
+    with undo_group(doc):
+        align, target = objs.align, objs.target_expr
+        if align is None:
+            align = c4d.BaseTag(c4d.Taligntospline)
+            objs.follow.InsertTag(align)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, align)
+            changes.append("Align")
+        else:
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, align)
         align[c4d.ALIGNTOSPLINETAG_LINK] = circle
         align[c4d.ALIGNTOSPLINETAG_AXIS] = 3
         align[c4d.ALIGNTOSPLINETAG_TANGENTIAL] = True
-        changed.append("Align to Spline tag")
-
-    if objs.target_expr is None and objs.cam is not None and objs.look_target is not None:
-        tgt = c4d.BaseTag(c4d.Ttargetexpression)
-        objs.cam.InsertTag(tgt)
-        tgt[c4d.TARGETEXPRESSIONTAG_LINK] = objs.look_target
-        changed.append("Target Expression tag")
-
-    if objs.focus is None and objs.fx is not None:
-        focus = c4d.BaseObject(c4d.Onull)
-        focus.SetName(config.FOCUS_NAME)
-        focus.SetRelPos(c4d.Vector(0, 0, config.DEFAULT_FOCUS_DISTANCE))
-        focus.InsertUnder(objs.fx)
-        changed.append("Focus object")
-
-    py = circle.GetTag(c4d.Tpython)
-    if py is None:
-        try:
-            from .rig_assemble import _build_python_tag_source
-            py = c4d.BaseTag(c4d.Tpython)
-            circle.InsertTag(py)
-            py[c4d.TPYTHON_CODE] = _build_python_tag_source()
-            changed.append("Python tag")
-        except Exception as e:
-            return False, "Failed to restore Python tag: %s" % e
-
-    if changed:
-        c4d.EventAdd()
-        return True, "Repair done: " + ", ".join(changed)
-    return True, "Repair: nothing to change."
-
-
-def _find_rig(doc):
-    active = doc.GetActiveObject()
-    if active:
-        obj = active
-        while obj:
-            name = obj.GetName()
-            if name == config.RIG_ROOT_NAME or name.startswith(config.RIG_ROOT_NAME + "_"):
-                return obj
-            obj = obj.GetUp()
-    root = doc.GetFirstObject()
-    while root:
-        name = root.GetName()
-        if name == config.RIG_ROOT_NAME or name.startswith(config.RIG_ROOT_NAME + "_"):
-            return root
-        root = root.GetNext()
-    return None
-
-
-def _find_main_camera_for_rig(rig):
-    child = rig.GetDown()
-    while child:
-        if child.GetName().startswith(config.MAIN_CAMERA_NAME):
-            return child
-        child = child.GetNext()
-    return None
+        if target is None:
+            target = c4d.BaseTag(c4d.Ttargetexpression)
+            objs.cam.InsertTag(target)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, target)
+            changes.append("Target")
+        else:
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, target)
+        target[c4d.TARGETEXPRESSIONTAG_LINK] = objs.look_target
+        if objs.focus is None:
+            focus = c4d.BaseObject(c4d.Onull)
+            focus.SetName(config.FOCUS_NAME)
+            focus.InsertUnder(objs.fx)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, focus)
+            changes.append("Focus")
+        stages = {}
+        for name in known_names:
+            tag = next((t for t in tags if t.GetName() == name), None)
+            if tag is None:
+                tag = c4d.BaseTag(c4d.Tpython)
+                tag.SetName(name)
+                tag[c4d.TPYTHON_CODE] = source
+                circle.InsertTag(tag)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, tag)
+                changes.append(name)
+            else:
+                doc.AddUndo(c4d.UNDOTYPE_CHANGE, tag)
+            stages[name] = tag
+        configure_priorities(stages[known_names[0]], align, target, stages[known_names[1]])
+        if objs.vib:
+            doc.AddUndo(c4d.UNDOTYPE_DELETEOBJ, objs.vib)
+            objs.vib.Remove()
+            changes.append("removed legacy Vibrate")
+    return True, "Repair: priorities/links checked; " + (", ".join(changes) or "no missing components.")

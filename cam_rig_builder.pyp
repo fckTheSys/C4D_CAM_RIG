@@ -60,6 +60,8 @@ if os.path.isdir(os.path.join(_PLUGIN_ROOT, "camrig")):
         from camrig.rig_builder import reset_rig_params as _reset_params
         from camrig.rig_builder import break_rig_user_data as _break_ud
         from camrig.rig_builder import validate_ud_template_vs_config as _validate_ud_template
+        from camrig.commands import choose_rig, find_circle, select_part, upgrade_rig, break_preflight
+        from camrig.scene_support import undo_group
         from camrig.diagnostics import (
             run_self_check as _run_self_check,
             inspect_rig as _inspect_rig,
@@ -98,27 +100,11 @@ else:
 
 
 def _find_rig(doc):
-    """Ищет Cam_Rig в иерархии от выбранного объекта вверх, затем в корне сцены."""
-    if config is None:
+    try:
+        return choose_rig(doc, interactive=True) if doc and config else None
+    except ValueError as exc:
+        c4d.gui.MessageDialog(str(exc))
         return None
-    if not doc:
-        return None
-    active = doc.GetActiveObject()
-    if active:
-        obj = active
-        while obj:
-            name = obj.GetName()
-            if name == config.RIG_ROOT_NAME or name.startswith(config.RIG_ROOT_NAME + "_"):
-                return obj
-            obj = obj.GetUp()
-    # Запасной вариант: первый риг в корне сцены
-    root = doc.GetFirstObject()
-    while root:
-        name = root.GetName()
-        if name == config.RIG_ROOT_NAME or name.startswith(config.RIG_ROOT_NAME + "_"):
-            return root
-        root = root.GetNext()
-    return None
 
 
 def _load_camrig_icon():
@@ -186,8 +172,15 @@ ID_BTN_BREAK_UD       = 1020
 ID_BTN_INSPECT_RIG    = 1021
 ID_BTN_REPAIR_RIG     = 1022
 ID_BTN_SELF_CHECK     = 1023
+ID_BTN_UPGRADE = 1024
+ID_BTN_RESET_PLANE = 1025
+ID_BTN_RESET_AIM = 1026
+_NAV_BUTTONS = [(1030, "rig", "Select Rig"), (1031, "orbit", "Select Orbit"),
+                (1032, "targets", "Select Targets"), (1033, "camera", "Look Through Camera")]
 
 _RESET_BUTTONS = [
+    (ID_BTN_RESET_PLANE, "orbit_rig", "Reset Orbit Rig"),
+    (ID_BTN_RESET_AIM, "aim", "Reset Aim Offset"),
     (ID_BTN_RESET_ORBIT,    "orbit",    "Reset Orbit"),
     (ID_BTN_RESET_TRANSFORM, "transform", "Reset Transform"),
     (ID_BTN_RESET_CAMERA,   "camera",   "Reset Camera"),
@@ -207,12 +200,15 @@ class CamRigDialog(c4d.gui.GeDialog):
         self.GroupBegin(id=ID_GROUP_MAIN, flags=c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT, cols=1)
         self.GroupBorderSpace(10, 10, 10, 10)
 
-        self.GroupBegin(id=1001, flags=c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT, cols=2)
+        self.GroupBegin(id=1050, flags=c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT, cols=2)
         self.AddButton(id=ID_BTN_CREATE_RIG, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name="Create Rig")
         self.AddButton(id=ID_BTN_BREAK_UD, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name="Break User Data")
         self.AddButton(id=ID_BTN_INSPECT_RIG, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name="Rig Inspector")
         self.AddButton(id=ID_BTN_REPAIR_RIG, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name="Repair Selected Rig")
         self.GroupEnd()
+        self.AddButton(ID_BTN_UPGRADE, c4d.BFH_SCALEFIT, name="Upgrade Selected Rig")
+        for btn, _, label in _NAV_BUTTONS:
+            self.AddButton(btn, c4d.BFH_SCALEFIT, name=label)
         self.AddButton(id=ID_BTN_SELF_CHECK, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name="Self check / diagnostics")
 
         self.AddSeparatorH(0)
@@ -229,6 +225,19 @@ class CamRigDialog(c4d.gui.GeDialog):
         return super().CreateLayout()
 
     def Command(self, id, msg):
+        if id == ID_BTN_UPGRADE or any(btn == id for btn, _, _ in _NAV_BUTTONS):
+            doc = c4d.documents.GetActiveDocument()
+            rig = _find_rig(doc)
+            if rig:
+                try:
+                    if id == ID_BTN_UPGRADE:
+                        _, message = upgrade_rig(doc, rig)
+                        c4d.gui.MessageDialog(message)
+                    else:
+                        select_part(doc, rig, next(part for btn, part, _ in _NAV_BUTTONS if btn == id))
+                except Exception as exc:
+                    c4d.gui.MessageDialog(str(exc))
+            return True
         if id == ID_BTN_CREATE_RIG:
             self._on_create_rig()
         elif id == ID_BTN_RESET_ALL:
@@ -267,7 +276,9 @@ class CamRigDialog(c4d.gui.GeDialog):
         else:
             _log("No null selected — rig will be created at origin.")
         try:
-            rig = build_cam_rig(doc, position_global=position_global)
+            with undo_group(doc):
+                rig = build_cam_rig(doc, position_global=position_global)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, rig)
             if rig is not None:
                 doc.SetSelection(rig, c4d.SELECTION_NEW)
             c4d.EventAdd()
@@ -287,11 +298,9 @@ class CamRigDialog(c4d.gui.GeDialog):
         if not rig:
             c4d.gui.MessageDialog("No Cam_Rig found. Select any object inside the rig first.")
             return
-        doc.StartUndo()
-        doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
-        reset_rig_params(rig, [group_key])
-        doc.EndUndo()
-        c4d.EventAdd()
+        with undo_group(doc):
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
+            reset_rig_params(rig, [group_key])
         _log_ok("Reset %s: %s" % (group_key, rig.GetName()))
 
     def _on_reset_all(self):
@@ -303,11 +312,9 @@ class CamRigDialog(c4d.gui.GeDialog):
         if not rig:
             c4d.gui.MessageDialog("No Cam_Rig found. Select any object inside the rig first.")
             return
-        doc.StartUndo()
-        doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
-        reset_rig_to_defaults(rig)
-        doc.EndUndo()
-        c4d.EventAdd()
+        with undo_group(doc):
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rig)
+            reset_rig_to_defaults(rig)
         _log_ok("Reset All: " + rig.GetName())
 
     def _on_break_user_data(self):
@@ -323,23 +330,25 @@ class CamRigDialog(c4d.gui.GeDialog):
                 "No Cam Rig found. Select the Cam_Rig or any object inside the rig (e.g. Main_Camera), then click Break User Data."
             )
             return
+        try:
+            break_preflight(circle.GetUp())
+        except ValueError as exc:
+            c4d.gui.MessageDialog(str(exc))
+            return
         ok = c4d.gui.QuestionDialog(
             "Break User Data?\n\n"
-            "Animated parameters will be baked onto the rig objects. "
+            "Supported parameters will be transferred to rig objects. This is not a full camera bake. "
             "The Python Tag will be removed and the rig will no longer be driven by User Data. "
             "Rig objects will be removed from their layer."
         )
         if not ok:
             return
         try:
-            doc.StartUndo()
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, circle)
-            break_rig_user_data(doc, circle)
-            doc.EndUndo()
+            with undo_group(doc):
+                break_rig_user_data(doc, circle)
             _log_ok("Break User Data done: " + circle.GetName())
             c4d.gui.MessageDialog("Break User Data completed.")
         except Exception as e:
-            doc.EndUndo()
             _log_err("Break User Data failed: " + str(e))
             traceback.print_exc()
             c4d.gui.MessageDialog("Error: " + str(e))
@@ -347,7 +356,10 @@ class CamRigDialog(c4d.gui.GeDialog):
     def _on_inspect_rig(self):
         doc = c4d.documents.GetActiveDocument()
         try:
-            _, report = _inspect_rig(doc)
+            rig = _find_rig(doc)
+            if rig is None:
+                return
+            _, report = _inspect_rig(doc, rig)
         except Exception as e:
             traceback.print_exc()
             report = "Rig Inspector failed: " + str(e)
@@ -356,7 +368,10 @@ class CamRigDialog(c4d.gui.GeDialog):
     def _on_repair_rig(self):
         doc = c4d.documents.GetActiveDocument()
         try:
-            _, report = _repair_selected_rig(doc)
+            rig = _find_rig(doc)
+            if rig is None:
+                return
+            _, report = _repair_selected_rig(doc, rig)
         except Exception as e:
             traceback.print_exc()
             report = "Repair failed: " + str(e)
