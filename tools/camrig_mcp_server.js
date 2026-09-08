@@ -40,7 +40,8 @@ async function backend(){
 }
 async function call(action,args){
   const c=await backend();
-  const code="import json, c4d\nfrom camrig.agent_api import dispatch\ndoc=c4d.documents.GetActiveDocument()\nresult=dispatch(doc,"+JSON.stringify(action)+","+JSON.stringify(args||{})+")\nprint(json.dumps(result,default=str))";
+  const actionJson=JSON.stringify(action); const argsJson=JSON.stringify(args||{});
+  const code="import json, c4d\nfrom camrig.agent_api import dispatch\ndoc=c4d.documents.GetActiveDocument()\nresult=dispatch(doc,json.loads("+JSON.stringify(actionJson)+"),json.loads("+JSON.stringify(argsJson)+"))\nprint(json.dumps(result,default=str))";
   const r=await c.callTool({name:"exec_python",arguments:{code,timeout_ms:30000}});
   const text=(r.content||[]).filter(x=>x.type==="text").map(x=>x.text).join("\n");
   return {content:[{type:"text",text}]};

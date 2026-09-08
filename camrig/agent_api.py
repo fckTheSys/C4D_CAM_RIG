@@ -88,14 +88,19 @@ def set_keyframes(doc, rig_ref, tracks, interpolation="linear", replace_existing
     rig=resolve_rig(doc,rig_ref); ids=ud_map(rig); fps=doc.GetFps()
     with undo_group(doc):
         add_undo(doc,c4d.UNDOTYPE_CHANGE,rig)
+        interpolation_map={"linear":c4d.CINTERPOLATION_LINEAR,"spline":c4d.CINTERPOLATION_SPLINE,"step":c4d.CINTERPOLATION_STEP}
+        if interpolation not in interpolation_map: raise ValueError("Unsupported interpolation: "+str(interpolation))
         for key,items in tracks.items():
             if key not in CONTROL_SPECS or CONTROL_SPECS[key][0] not in ids: raise ValueError("INVALID_CONTROL: "+key)
             desc=ids[CONTROL_SPECS[key][0]]; track=rig.FindCTrack(desc)
+            if track is not None and replace_existing: track.Remove(); track=None
             if track is None: track=c4d.CTrack(rig,desc); rig.InsertTrackSorted(track)
             curve=track.GetCurve()
             for item in items:
                 time=c4d.BaseTime(float(item["frame"]),fps); kd=curve.AddKey(time)
-                if kd: kd["key"].SetValue(curve,item["value"])
+                if kd:
+                    kd["key"].SetValue(curve,item["value"])
+                    kd["key"].SetInterpolation(curve,interpolation_map[interpolation])
     return _response(doc,rig)
 
 def duplicate(doc, rig_ref, name=None):
@@ -166,7 +171,7 @@ def capture_viewport(doc, payload):
 
 def reset(doc, rig_ref, group="all"):
     rig=resolve_rig(doc,rig_ref)
-    groups=[group] if isinstance(group,str) else list(group)
+    groups=list(config.RESET_GROUP_KEYS) if group=="all" else ([group] if isinstance(group,str) else list(group))
     with undo_group(doc): add_undo(doc,c4d.UNDOTYPE_CHANGE,rig); reset_rig_params(rig,groups)
     return _response(doc,rig)
 
@@ -184,7 +189,7 @@ def dispatch(doc, action, payload):
     if action=="reset": return reset(doc,payload["rig"],payload.get("group","all"))
     if action=="upgrade":
         rig=resolve_rig(doc,payload["rig"])
-        with undo_group(doc): upgrade_rig(doc,rig)
+        upgrade_rig(doc,rig)
         return _response(doc,rig)
     if action=="undo": doc.DoUndo(); return _response(doc)
     if action=="redo": doc.DoRedo(); return _response(doc)
