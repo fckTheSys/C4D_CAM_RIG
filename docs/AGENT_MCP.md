@@ -25,16 +25,18 @@ path such as `/Cam_Rig_0`. Combine related edits into one
 `camrig_set_controls` call, then call `camrig_set_time` to evaluate. Orbit is
 never normalized, so values such as `720` remain intact in User Data and keys.
 
-The current facade exposes scene state, rig listing/state, controls, targets,
-time, reset, and known-runtime upgrade. All mutations use one Cinema 4D Undo
-boundary. Production operations such as bake, overwrite-save, render and
-batch are intentionally not silently emulated; they will be added only when
-the underlying CamRig command has a verified implementation.
+The facade exposes scene state, controls, targets, time, keyframes, sampling,
+reset, upgrade, create/duplicate, guarded save, batch, Undo/Redo and viewport
+capture. Every scene mutation has one Cinema 4D Undo boundary. Bake Camera is
+currently a dry-run and must not be presented as a production bake command.
 
 `camrig_capture_viewport` is the exception for QA: it uses Cinema 4D's
 Preview Hardware `RenderDocument` path, temporarily selects the rig FX camera,
 restores the viewport state, and writes a PNG plus metadata. It does not need
 ComfyUI or the Lesta bridge.
+
+See `AGENT_MCP_ACCEPTANCE.md` for the current live acceptance evidence and
+known limits.
 
 Example intent:
 

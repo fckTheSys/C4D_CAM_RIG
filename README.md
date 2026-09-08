@@ -12,6 +12,7 @@
 - [Проверки и оставшиеся ограничения](docs/ACCEPTANCE_1_6.md)
 - [MCP runbook](docs/MCP_SETUP.md)
 - [Agent MCP facade](docs/AGENT_MCP.md)
+- [Agent MCP acceptance](docs/AGENT_MCP_ACCEPTANCE.md)
 - [Изменения](CHANGELOG.md)
 
 Версия development, не публичный релиз. Автоматические Show/Hide HUD не реализованы: Python API C4D не предоставляет создание нативных HUD-элементов. Ручной Add to HUD возможен; альтернативный интерфейс требует выбора владельца.
