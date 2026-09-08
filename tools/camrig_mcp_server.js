@@ -13,9 +13,15 @@ const TOOLS = [
   ["camrig_get_state","Read a CamRig by path",{rig:{type:"string"},include:{type:"array",items:{type:"string"}}}],
   ["camrig_set_controls","Atomically set stable CamRig controls",{rig:{type:"string"},controls:{type:"object"},keyframe:{type:"boolean"},evaluate:{type:"boolean"}}],
   ["camrig_set_targets","Set external target links by path",{rig:{type:"string"},targets:{type:"object"}}],
+  ["camrig_set_camera_mode","Set targeting, focus and focal controls",{rig:{type:"string"},values:{type:"object"}}],
+  ["camrig_set_root_transform","Set root position/rotation",{rig:{type:"string"},transform:{type:"object"}}],
+  ["camrig_set_keyframes","Create or update control keys",{rig:{type:"string"},tracks:{type:"object"},replace_existing:{type:"boolean"},confirm:{type:"boolean"}}],
   ["camrig_set_time","Evaluate a frame or second",{frame:{type:"number"},seconds:{type:"number"}}],
   ["camrig_reset","Reset a control group",{rig:{type:"string"},group:{type:"string"}}],
   ["camrig_upgrade","Upgrade a known legacy rig",{rig:{type:"string"}}],
+  ["camrig_create","Create a new CamRig",{name:{type:"string"}}],
+  ["camrig_undo","Undo the last Cinema 4D operation",{}],
+  ["camrig_redo","Redo the last Cinema 4D operation",{}],
 ];
 let client;
 async function backend(){

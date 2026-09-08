@@ -29,6 +29,15 @@ def resolve_rig(doc, ref):
     if len(found)>1: raise LookupError("AMBIGUOUS_RIG: " + str(ref))
     return found[0]
 
+def resolve_object(doc, ref):
+    """Resolve an absolute hierarchy path, falling back to a unique name."""
+    candidates=[]
+    for obj in walk(doc.GetFirstObject()):
+        if _path(obj)==ref or obj.GetName()==ref: candidates.append(obj)
+    if not candidates: raise LookupError("INVALID_TARGET: " + str(ref))
+    if len(candidates)>1: raise LookupError("AMBIGUOUS_TARGET: " + str(ref))
+    return candidates[0]
+
 def _tag_state(node):
     out=[]
     if node:
