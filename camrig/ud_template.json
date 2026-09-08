@@ -326,6 +326,15 @@
       ]
     },
     {
+      "name": "Spring",
+      "titlebar": true,
+      "params": [
+        {"key": "spring_amount", "type": "real", "name": "Spring Amount", "min": 0, "max": 100, "default": 0, "slider_min": 0, "slider_max": 100, "step": 1, "interface": "float_slider"},
+        {"key": "spring_response", "type": "real", "name": "Spring Response", "min": 0, "max": 100, "default": 60, "slider_min": 0, "slider_max": 100, "step": 1, "interface": "float_slider"},
+        {"key": "spring_damping", "type": "real", "name": "Spring Damping", "min": 0, "max": 100, "default": 65, "slider_min": 0, "slider_max": 100, "step": 1, "interface": "float_slider"}
+      ]
+    },
+    {
       "name": "Focus",
       "params": [
         {
