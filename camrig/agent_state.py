@@ -12,6 +12,10 @@ def _path(obj):
         parts.append(obj.GetName()); obj=obj.GetUp()
     return "/" + "/".join(reversed(parts))
 
+def _priority_value(priority):
+    try: return int(priority.GetPriorityValue(c4d.PRIORITYVALUE_PRIORITY))
+    except Exception: return None
+
 def _json(value):
     if isinstance(value, c4d.Vector): return {"x": value.x, "y": value.y, "z": value.z}
     if isinstance(value, c4d.BaseList2D): return _path(value)
@@ -47,7 +51,7 @@ def _tag_state(node):
         for tag in node.GetTags():
             if tag.CheckType(c4d.Tpython):
                 meta=tag.GetDataInstance().GetContainer(config.META_ID)
-                out.append({"name":tag.GetName(),"role":meta.GetInt32(10),"priority":tag[c4d.EXPRESSION_PRIORITY]})
+                out.append({"name":tag.GetName(),"role":meta.GetInt32(10),"priority":_priority_value(tag[c4d.EXPRESSION_PRIORITY])})
     return out
 
 def rig_state(doc, rig, include=None):

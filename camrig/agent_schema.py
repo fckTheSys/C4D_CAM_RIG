@@ -4,6 +4,7 @@ This module is intentionally separate from the embedded expression runtime.  It
 is safe to import from Cinema 4D's Python console/bridge, but is never embedded
 in a scene tag.
 """
+import math
 from . import config
 
 CONTROL_SPECS = {
@@ -27,14 +28,30 @@ CONTROL_SPECS = {
 }
 LINK_KEYS = {"target_a": config.UD_TARGET_A, "target_b": config.UD_TARGET_B,
              "orbit_center": config.UD_ORBIT_CENTER, "focus_target": config.UD_FOCUS_TARGET}
+ALIASES = {"plane_heading": "plane_h", "plane_tilt": "plane_p", "plane_bank": "plane_b"}
+
+def canonical_controls(controls):
+    """Normalize documented aliases, refusing conflicting spellings."""
+    if not isinstance(controls, dict): raise ValueError("INVALID_CONTROL: controls must be an object")
+    result = dict(controls)
+    for alias, key in ALIASES.items():
+        if alias in result:
+            if key in result: raise ValueError("INVALID_CONTROL: both %s and %s were supplied" % (alias, key))
+            result[key] = result.pop(alias)
+    return result
 
 def validate_controls(controls):
-    if not isinstance(controls, dict): raise ValueError("controls must be an object")
+    controls = canonical_controls(controls)
     for key, value in controls.items():
-        if key not in CONTROL_SPECS: raise KeyError(key)
-        if isinstance(value, bool): continue
-        if not isinstance(value, (int, float)):
-            raise TypeError(key + " must be numeric")
+        if key not in CONTROL_SPECS: raise ValueError("INVALID_CONTROL: " + key)
+        if key in ("shake_enable", "use_target", "free_camera"):
+            if not isinstance(value, bool): raise ValueError("INVALID_CONTROL: %s must be boolean" % key)
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise ValueError("INVALID_CONTROL: %s must be a finite number" % key)
+        if key == "focus_mode" and int(value) != value:
+            raise ValueError("INVALID_CONTROL: focus_mode must be 0, 1, or 2")
         _, low, high = CONTROL_SPECS[key]
         if low is not None and value < low or high is not None and value > high:
-            raise ValueError("%s must be in [%s, %s]" % (key, low, high))
+            raise ValueError("INVALID_CONTROL: %s must be in [%s, %s]" % (key, low, high))
+    return controls

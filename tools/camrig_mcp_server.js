@@ -15,7 +15,7 @@ const TOOLS = [
   ["camrig_set_targets","Set external target links by path",{rig:{type:"string"},targets:{type:"object"}}],
   ["camrig_set_camera_mode","Set targeting, focus and focal controls",{rig:{type:"string"},values:{type:"object"}}],
   ["camrig_set_root_transform","Set root position/rotation",{rig:{type:"string"},transform:{type:"object"}}],
-  ["camrig_set_keyframes","Create or update control keys",{rig:{type:"string"},tracks:{type:"object"},replace_existing:{type:"boolean"},confirm:{type:"boolean"}}],
+  ["camrig_set_keyframes","Create or update control keys",{rig:{type:"string"},tracks:{type:"object"},interpolation:{type:"string",enum:["linear","spline","step"]},replace_existing:{type:"boolean"},confirm:{type:"boolean"}}],
   ["camrig_set_time","Evaluate a frame or second",{frame:{type:"number"},seconds:{type:"number"}}],
   ["camrig_sample","Sample camera transforms without leaving the current frame",{rig:{type:"string"},frames:{type:"array",items:{type:"number"}}}],
   ["camrig_diagnostics","Run CamRig Inspector diagnostics",{rig:{type:"string"}}],
@@ -26,11 +26,13 @@ const TOOLS = [
   ["camrig_save_scene","Save the active document",{path:{type:"string"},confirm:{type:"boolean"}}],
   ["camrig_bake_camera","Dry-run or explicitly request camera bake",{rig:{type:"string"},confirm:{type:"boolean"}}],
   ["camrig_batch","Dry-run or apply one atomic operation to multiple rigs",{rigs:{type:"array",items:{type:"string"}},action:{type:"string"},controls:{type:"object"},group:{type:"string"},dry_run:{type:"boolean"},confirm:{type:"boolean"}}],
-  ["camrig_capture_viewport","Capture the CamRig FX camera as PNG",{rig:{type:"string"},path:{type:"string"},frame:{type:"number"},width:{type:"number"},height:{type:"number"}}],
+  ["camrig_capture_viewport","Capture the CamRig FX camera as PNG",{rig:{type:"string"},path:{type:"string"},frame:{type:"number"},width:{type:"integer"},height:{type:"integer"},camera:{type:"string",enum:["fx","active"]},confirm:{type:"boolean"}}],
   ["camrig_undo","Undo the last Cinema 4D operation",{}],
   ["camrig_redo","Redo the last Cinema 4D operation",{}],
 ];
 let client;
+let queue=Promise.resolve();
+const toolNames=new Set(TOOLS.map(([name])=>name));
 async function backend(){
   if(client) return client;
   const command=process.platform === "win32" ? "npx.cmd" : "npx";
@@ -40,16 +42,23 @@ async function backend(){
 }
 async function call(action,args){
   const c=await backend();
-  const actionJson=JSON.stringify(action); const argsJson=JSON.stringify(args||{});
-  const code="import json, c4d\nfrom camrig.agent_api import dispatch\ndoc=c4d.documents.GetActiveDocument()\nresult=dispatch(doc,json.loads("+JSON.stringify(actionJson)+"),json.loads("+JSON.stringify(argsJson)+"))\nprint(json.dumps(result,default=str))";
+  const encoded=Buffer.from(JSON.stringify({action,args:args||{}}),"utf8").toString("base64");
+  const code="import base64,json,c4d\nfrom camrig.agent_api import dispatch\npayload=json.loads(base64.b64decode("+JSON.stringify(encoded)+").decode('utf-8'))\nresult=dispatch(c4d.documents.GetActiveDocument(),payload['action'],payload['args'])\nprint('__CAMRIG_AGENT_RESULT__'+json.dumps(result,ensure_ascii=False,default=str))";
   const r=await c.callTool({name:"exec_python",arguments:{code,timeout_ms:30000}});
   const text=(r.content||[]).filter(x=>x.type==="text").map(x=>x.text).join("\n");
-  return {content:[{type:"text",text}]};
+  let stdout=text;
+  try { const envelope=JSON.parse(text); stdout=envelope.stdout||text; if(envelope.error) throw new Error(envelope.error); }
+  catch(error) { if(error instanceof SyntaxError) {} else throw error; }
+  const marker="__CAMRIG_AGENT_RESULT__"; const index=stdout.lastIndexOf(marker);
+  if(index<0) throw new Error("C4D_EXECUTION_ERROR: "+stdout);
+  return {content:[{type:"text",text:JSON.stringify(JSON.parse(stdout.slice(index+marker.length).trim()))}]};
 }
 const server=new Server({name:"camrig-agent",version:"1.0.0"},{capabilities:{tools:{}}});
 server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:TOOLS.map(([name,description,properties])=>({name,description,inputSchema:{type:"object",properties,additionalProperties:false}}))}));
 server.setRequestHandler(CallToolRequestSchema,async(req)=>{
   const name=req.params.name; const action=name.replace(/^camrig_/ ,"");
-  try{return await call(action,req.params.arguments||{});}catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,warnings:[],errors:[{code:"C4D_BRIDGE_UNAVAILABLE",message:String(e.message||e)}]})}]};}
+  if(!toolNames.has(name)) return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,scene:{},rig:null,changes:[],state:{},warnings:[],errors:[{code:"UNKNOWN_TOOL",message:name}]})}]};
+  const task=queue.then(()=>call(action,req.params.arguments||{})); queue=task.catch(()=>{});
+  try{return await task;}catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,scene:{},rig:null,changes:[],state:{},warnings:[],errors:[{code:"C4D_EXECUTION_ERROR",message:String(e.message||e)}]})}]};}
 });
 server.connect(new StdioServerTransport()).catch(e=>{console.error(e);process.exit(1);});
