@@ -126,6 +126,20 @@ def duplicate(doc, rig_ref, name=None):
     clone.SetName(name or source.GetName()+"_Copy")
     with undo_group(doc):
         doc.InsertObject(clone); alias.Translate(True); add_undo(doc,c4d.UNDOTYPE_NEWOBJ,clone)
+        source_objs=__import__('camrig.rig_objects',fromlist=['get_rig_objects']).get_rig_objects(find_circle(source))
+        clone_objs=__import__('camrig.rig_objects',fromlist=['get_rig_objects']).get_rig_objects(find_circle(clone))
+        if source_objs is None or clone_objs is None or clone_objs.align is None or clone_objs.target_expr is None:
+            raise ValueError("STRUCTURE_UNSUPPORTED: duplicate hierarchy")
+        for node in (clone_objs.align,clone_objs.target_expr,clone): add_undo(doc,c4d.UNDOTYPE_CHANGE,node)
+        clone_objs.align[c4d.ALIGNTOSPLINETAG_LINK]=clone_objs.circle
+        clone_objs.target_expr[c4d.TARGETEXPRESSIONTAG_LINK]=clone_objs.look_target
+        mapping={source_objs.target_a:clone_objs.target_a,source_objs.target_b:clone_objs.target_b,
+                 source_objs.look_target:clone_objs.look_target,source_objs.circle:clone_objs.circle,
+                 source_objs.cam:clone_objs.cam,source_objs.fx:clone_objs.fx}
+        source_ids,clone_ids=ud_map(source),ud_map(clone)
+        for name in LINK_KEYS.values():
+            if name in source_ids and name in clone_ids and source[source_ids[name]] in mapping:
+                clone[clone_ids[name]]=mapping[source[source_ids[name]]]
     return _response(doc,clone)
 
 def save_scene(doc, path, confirm=False):
