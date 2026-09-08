@@ -28,13 +28,14 @@ def add_slider(
     step: float = 0.01,
     unit: Optional[int] = None,
     custom_gui: Optional[int] = None,
+    slider_min: Optional[float] = None,
+    slider_max: Optional[float] = None,
 ) -> c4d.DescID:
     """Создаёт слайдер User Data на объекте и возвращает его ID."""
     bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_REAL)
 
     bc[c4d.DESC_NAME] = name
-    bc[c4d.DESC_MIN] = minv
-    bc[c4d.DESC_MAX] = maxv
+    set_real_limits(bc, minv, maxv, slider_min, slider_max)
     bc[c4d.DESC_STEP] = step
     if parent_group is not None:
         bc[c4d.DESC_PARENTGROUP] = parent_group
@@ -171,13 +172,25 @@ def build_user_data_from_template(
                     rig,
                     name,
                     float(param.get("default", 0)),
-                    float(param["min"]),
-                    float(param["max"]),
+                    param.get("min"),
+                    param.get("max"),
                     parent_group=parent_group,
                     step=float(param.get("step", 0.01)),
                     unit=param.get("unit"),
                     custom_gui=custom_gui,
+                    slider_min=param.get("slider_min"),
+                    slider_max=param.get("slider_max"),
                 )
+            elif ptype == "enum":
+                bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_LONG)
+                bc[c4d.DESC_NAME] = name
+                bc[c4d.DESC_PARENTGROUP] = parent_group
+                cycle = c4d.BaseContainer()
+                for index, label in enumerate(param["choices"]):
+                    cycle[index] = label
+                bc[c4d.DESC_CYCLE] = cycle
+                desc = rig.AddUserData(bc)
+                rig[desc] = int(param.get("default", 0))
             elif ptype == "bool":
                 add_bool(rig, name, bool(param.get("default", False)), parent_group=parent_group)
             elif ptype == "link":
@@ -195,10 +208,12 @@ def apply_ud_defaults_from_template(template: Dict[str, Any]) -> None:
         for param in group.get("params", []):
             ptype = param.get("type")
             name = param.get("name")
-            if not name or ptype not in ("real", "bool"):
+            if not name or ptype not in ("real", "bool", "enum"):
                 continue
             if ptype == "real":
                 defaults[name] = float(param.get("default", 0))
+            elif ptype == "enum":
+                defaults[name] = int(param.get("default", 0))
             else:
                 defaults[name] = bool(param.get("default", False))
     if defaults:
@@ -222,7 +237,7 @@ def validate_ud_template_vs_config() -> None:
         for param in group.get("params", []):
             ptype = param.get("type")
             name = param.get("name")
-            if not name or ptype not in ("real", "bool"):
+            if not name or ptype not in ("real", "bool", "enum"):
                 continue
             template_names.append(name)
             if name not in config.UD_DEFAULTS:
@@ -239,3 +254,13 @@ def validate_ud_template_vs_config() -> None:
             "config.UD_DEFAULTS has names not present in ud_template.json: "
             + ", ".join(sorted(set(missing_in_template)))
         )
+
+def set_real_limits(bc, minimum=None, maximum=None, slider_min=None, slider_max=None):
+    """Separate numerical storage limits from the comfortable slider range."""
+    import sys
+    bc[c4d.DESC_MIN] = -sys.float_info.max if minimum is None else float(minimum)
+    bc[c4d.DESC_MAX] = sys.float_info.max if maximum is None else float(maximum)
+    if slider_min is not None:
+        bc[c4d.DESC_MINSLIDER] = float(slider_min)
+    if slider_max is not None:
+        bc[c4d.DESC_MAXSLIDER] = float(slider_max)

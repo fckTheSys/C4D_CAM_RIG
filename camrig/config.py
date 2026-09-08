@@ -20,8 +20,8 @@ FOCUS_DISPLAY_MODE: int = 4
 FOCUS_USECOLOR_MODE: int = 2
 
 PLUGIN_SLUG: str = "camrig"
-PLUGIN_VERSION: str = "1.4.0"
-PLUGIN_BUILD_DATE: str = "2026-05-08"
+PLUGIN_VERSION: str = "1.5.0"
+PLUGIN_BUILD_DATE: str = "2026-09-08"
 PLUGIN_NAME: str = "Cam Rig Builder"
 PLUGIN_HELP: str = "Create camera rig"
 
@@ -124,3 +124,30 @@ UD_DEFAULTS: dict = {
     UD_TARGET_BLEND: DEFAULT_TARGET_BLEND,
     UD_FREE_CAMERA: DEFAULT_FREE_CAMERA,
 }
+
+# Scene schema metadata lives in our plugin's BaseContainer namespace.
+SCHEMA_VERSION = 2
+META_ID = PLUGIN_ID
+META_SCHEMA = 1
+META_BACKUP_CODE = 2
+META_BACKUP_PRIORITY = 3
+FOCUS_TAG_NAME = "CamRig Focus 1.5"
+UD_CENTER_X = "Center X"
+UD_HEIGHT = "Height"
+UD_CENTER_Z = "Center Z"
+UD_PLANE_H = "Plane Heading"
+UD_PLANE_P = "Plane Tilt"
+UD_PLANE_B = "Plane Bank"
+UD_ORBIT_CENTER = "Orbit Center"
+UD_AIM_X = "Aim Offset X"
+UD_AIM_Y = "Aim Offset Y"
+UD_AIM_Z = "Aim Offset Z"
+UD_FOCUS_MODE = "Focus Mode"
+UD_FOCUS_TARGET = "Focus Target"
+UD_FOCUS_OFFSET = "Focus Offset"
+ORBIT_RIG_KEYS = [UD_CENTER_X, UD_HEIGHT, UD_CENTER_Z, UD_PLANE_H, UD_PLANE_P, UD_PLANE_B]
+AIM_KEYS = [UD_AIM_X, UD_AIM_Y, UD_AIM_Z]
+RESET_GROUP_KEYS.update(orbit_rig=ORBIT_RIG_KEYS, aim=AIM_KEYS)
+RESET_GROUP_KEYS["camera"] += [UD_FOCUS_MODE, UD_FOCUS_OFFSET]
+UD_DEFAULTS.update({key: 0.0 for key in ORBIT_RIG_KEYS + AIM_KEYS + [UD_FOCUS_OFFSET]})
+UD_DEFAULTS[UD_FOCUS_MODE] = 0

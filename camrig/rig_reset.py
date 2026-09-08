@@ -12,7 +12,9 @@ def _set_ud_value_safe(obj: c4d.BaseObject, desc_id: c4d.DescID, value) -> None:
     try:
         if isinstance(value, bool):
             obj[desc_id] = int(value)
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int):
+            obj[desc_id] = value
+        elif isinstance(value, float):
             obj[desc_id] = float(value)
         else:
             obj[desc_id] = value
