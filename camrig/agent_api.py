@@ -141,6 +141,23 @@ def bake_camera(doc, rig_ref, confirm=False):
     if not confirm: result=_response(doc,rig); result["state"]={"bake":plan}; return result
     raise ValueError("CONFIRMATION_REQUIRED: actual bake is not enabled until the verified bake command is selected")
 
+def batch(doc, payload):
+    refs=payload.get("rigs",[]); dry=payload.get("dry_run",True); confirm=payload.get("confirm",False)
+    if not refs: raise ValueError("rigs must not be empty")
+    selected=[resolve_rig(doc,r) for r in refs]
+    action=payload.get("action","set_controls")
+    if dry: return {"ok":True,"scene":{"document":doc.GetDocumentName()},"rig":None,"changes":[],"state":{"batch":{"action":action,"rigs":[rig_state(doc,r,["controls"]) for r in selected],"dry_run":True}},"warnings":[],"errors":[]}
+    if not confirm: raise ValueError("CONFIRMATION_REQUIRED: batch requires confirm=true")
+    with undo_group(doc):
+        for rig in selected:
+            add_undo(doc,c4d.UNDOTYPE_CHANGE,rig)
+            if action=="set_controls":
+                values=payload.get("controls",{}); validate_controls(values); ids=ud_map(rig)
+                for key,value in values.items(): rig[ids[CONTROL_SPECS[key][0]]]=value
+            elif action=="reset": reset_rig_params(rig,[payload.get("group","all")])
+            else: raise ValueError("Unsupported batch action: "+action)
+    return {"ok":True,"scene":{"document":doc.GetDocumentName()},"rig":None,"changes":[],"state":{"batch":{"action":action,"rigs":[rig_state(doc,r) for r in selected]}},"warnings":[],"errors":[]}
+
 def reset(doc, rig_ref, group="all"):
     rig=resolve_rig(doc,rig_ref)
     groups=[group] if isinstance(group,str) else list(group)
@@ -171,4 +188,5 @@ def dispatch(doc, action, payload):
     if action=="duplicate": return duplicate(doc,payload["rig"],payload.get("name"))
     if action=="save_scene": return save_scene(doc,payload.get("path"),payload.get("confirm",False))
     if action=="bake_camera": return bake_camera(doc,payload["rig"],payload.get("confirm",False))
+    if action=="batch": return batch(doc,payload)
     raise ValueError("Unsupported action: " + action)

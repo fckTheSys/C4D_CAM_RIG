@@ -25,6 +25,7 @@ const TOOLS = [
   ["camrig_duplicate","Duplicate a CamRig",{rig:{type:"string"},name:{type:"string"}}],
   ["camrig_save_scene","Save the active document",{path:{type:"string"},confirm:{type:"boolean"}}],
   ["camrig_bake_camera","Dry-run or explicitly request camera bake",{rig:{type:"string"},confirm:{type:"boolean"}}],
+  ["camrig_batch","Dry-run or apply one atomic operation to multiple rigs",{rigs:{type:"array",items:{type:"string"}},action:{type:"string"},controls:{type:"object"},group:{type:"string"},dry_run:{type:"boolean"},confirm:{type:"boolean"}}],
   ["camrig_undo","Undo the last Cinema 4D operation",{}],
   ["camrig_redo","Redo the last Cinema 4D operation",{}],
 ];
