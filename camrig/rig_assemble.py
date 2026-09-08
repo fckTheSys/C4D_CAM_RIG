@@ -45,10 +45,7 @@ def _build_python_tag_source() -> str:
             return f.read()
     except OSError as e:
         log.error("tag_embedded.py not readable: " + str(e))
-        return (
-            "import c4d\ndef main():\n"
-            "    pass  # CamRig: missing tag_embedded.py\n"
-        )
+        raise RuntimeError("Cannot create a portable rig without embedded runtime.") from e
 
 
 def _count_rigs(doc: c4d.documents.BaseDocument) -> int:
@@ -89,41 +86,10 @@ def _add_controller_user_data(
 ) -> None:
     """Добавляет на корень rig все группы и User Data из ud_template.json или fallback."""
     template = load_ud_template()
-    if template:
-        link_objects = {"target_a": target_a, "target_b": target_b}
-        build_user_data_from_template(rig, template, link_objects)
-        apply_ud_defaults_from_template(template)
-        return
-    group_orbit = add_group(rig, "Orbit")
-    add_slider(rig, config.UD_ORBIT, config.DEFAULT_ORBIT, 0, 360, parent_group=group_orbit, step=0.1)
-    add_slider(rig, config.UD_RADIUS, config.DEFAULT_RADIUS, 0, 5000, parent_group=group_orbit, step=1)
+    if not template:
+        raise RuntimeError("CamRig User Data template is missing or invalid.")
+    build_user_data_from_template(rig, template, {"target_a": target_a, "target_b": target_b})
 
-    group_transform = add_group(rig, "Transform")
-    add_slider(rig, config.UD_OFFSET_X, config.DEFAULT_OFFSET_X, -2000, 2000, parent_group=group_transform, step=1)
-    add_slider(rig, config.UD_OFFSET_Y, config.DEFAULT_OFFSET_Y, -2000, 2000, parent_group=group_transform, step=1)
-    add_slider(rig, config.UD_OFFSET_Z, config.DEFAULT_OFFSET_Z, -2000, 2000, parent_group=group_transform, step=1)
-    add_slider(rig, config.UD_ROT_H, config.DEFAULT_ROT_H, -180, 180, parent_group=group_transform, step=0.1)
-    add_slider(rig, config.UD_ROT_P, config.DEFAULT_ROT_P, -180, 180, parent_group=group_transform, step=0.1)
-    add_slider(rig, config.UD_ROT_B, config.DEFAULT_ROT_B, -180, 180, parent_group=group_transform, step=0.1)
-
-    group_camera = add_group(rig, "Camera")
-    add_slider(rig, config.UD_FOCAL, config.DEFAULT_FOCAL, 10, 200, parent_group=group_camera, step=0.1)
-    add_slider(rig, config.UD_FOCUS_DISTANCE, config.DEFAULT_FOCUS_DISTANCE, 1, 100000, parent_group=group_camera, step=1)
-
-    group_shake = add_group(rig, "Shake")
-    add_bool(rig, config.UD_SHAKE_ENABLE, config.DEFAULT_SHAKE_ENABLE, parent_group=group_shake)
-    add_slider(rig, config.UD_SHAKE_POS, config.DEFAULT_SHAKE_POS, 0, 100, parent_group=group_shake, step=0.1)
-    add_slider(rig, config.UD_SHAKE_ROT, config.DEFAULT_SHAKE_ROT, 0, 20, parent_group=group_shake, step=0.01)
-    add_slider(rig, config.UD_DRIFT_POS, config.DEFAULT_DRIFT_POS, 0, 50, parent_group=group_shake, step=0.1)
-    add_slider(rig, config.UD_DRIFT_ROT, config.DEFAULT_DRIFT_ROT, 0, 10, parent_group=group_shake, step=0.01)
-    add_slider(rig, config.UD_DRIFT_FREQ, config.DEFAULT_DRIFT_FREQ, 0.01, 1, parent_group=group_shake, step=0.01)
-
-    group_target = add_group(rig, "Target")
-    add_bool(rig, config.UD_USE_TARGET, config.DEFAULT_USE_TARGET, parent_group=group_target)
-    add_link(rig, config.UD_TARGET_A, default_link=target_a, parent_group=group_target)
-    add_link(rig, config.UD_TARGET_B, default_link=target_b, parent_group=group_target)
-    add_slider(rig, config.UD_TARGET_BLEND, config.DEFAULT_TARGET_BLEND, 0, 100, parent_group=group_target, step=1)
-    add_bool(rig, config.UD_FREE_CAMERA, config.DEFAULT_FREE_CAMERA, parent_group=group_target)
 
 
 def build_cam_rig(
@@ -137,6 +103,9 @@ def build_cam_rig(
     Имена объектов с уникальным суффиксом: Cam_Rig_0, Main_Camera_0, ...
     Возвращает созданный rig (корневой null) для выбора в AM.
     """
+    source = _build_python_tag_source()
+    if load_ud_template() is None:
+        raise RuntimeError("CamRig User Data template is missing.")
     suffix = _count_rigs(doc)
     names = _make_rig_names(suffix)
 
@@ -246,6 +215,14 @@ def build_cam_rig(
 
     py = c4d.BaseTag(c4d.Tpython)
     circle.InsertTag(py)
-    py[c4d.TPYTHON_CODE] = _build_python_tag_source()
+    py.SetName("CamRig Runtime 1.5")
+    py[c4d.TPYTHON_CODE] = source
+    from .scene_support import configure_priorities, set_schema
+    late = c4d.BaseTag(c4d.Tpython)
+    late.SetName(config.FOCUS_TAG_NAME)
+    late[c4d.TPYTHON_CODE] = source
+    circle.InsertTag(late)
+    configure_priorities(py, align, tgt, late)
+    set_schema(rig)
 
     return rig

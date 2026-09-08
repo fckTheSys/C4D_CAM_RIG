@@ -13,7 +13,7 @@ from collections import namedtuple
 from typing import Optional, Any, Dict
 
 # --- Зеркало camrig/config.py: версию держать как PLUGIN_VERSION в config.py ---
-EMBEDDED_RUNTIME_VERSION = "1.4.0"
+EMBEDDED_RUNTIME_VERSION = "1.5.0"
 
 # --- Зеркало camrig/config.py (строки UD и имена объектов) ---
 DEFAULT_ORBIT = 0.0
@@ -99,7 +99,7 @@ def _collect_rig_named_children(rig: c4d.BaseObject) -> Dict[str, c4d.BaseObject
     return found
 
 
-def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = True) -> Optional[RigObjects]:
+def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = False) -> Optional[RigObjects]:
     rig = circle.GetUp()
     if rig is None:
         return None
@@ -165,7 +165,8 @@ def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = True) -> Opti
 
 def _safe_float(val: Any, default: float) -> float:
     try:
-        return float(val)
+        value = float(val)
+        return value if math.isfinite(value) else default
     except (TypeError, ValueError):
         return default
 
@@ -177,9 +178,9 @@ def _apply_orbit_radius(
     radius: Any,
 ) -> None:
     if radius is not None:
-        circle[c4d.PRIM_CIRCLE_RADIUS] = radius
+        circle[c4d.PRIM_CIRCLE_RADIUS] = max(0.0, _safe_float(radius, DEFAULT_RADIUS))
     if align and orbit is not None:
-        align[c4d.ALIGNTOSPLINETAG_POSITION] = orbit / 360.0
+        align[c4d.ALIGNTOSPLINETAG_POSITION] = orbit_phase(orbit)
 
 
 def _apply_offset(offset: c4d.BaseObject, offx: Any, offy: Any, offz: Any) -> None:
@@ -196,9 +197,9 @@ def _apply_focal(cam: c4d.BaseObject, fx: c4d.BaseObject, focal: Any) -> None:
     try:
         f = float(focal)
         if cam is not None:
-            cam[_FOCAL_LENGTH_ID] = f
+            cam[camera_focal_id(cam)] = f
         if fx is not None:
-            fx[_FOCAL_LENGTH_ID] = f
+            fx[camera_focal_id(fx)] = f
     except (TypeError, AttributeError):
         pass
 
@@ -318,6 +319,7 @@ def _execute(op: c4d.BaseTag) -> None:
     if not ud:
         ud = _read_all_user_data(circle)
 
+    apply_orbit_plane(objs, ud)
     _apply_orbit_radius(circle, objs.align, ud.get(UD_ORBIT), ud.get(UD_RADIUS))
     _apply_offset(objs.offset, ud.get(UD_OFFSET_X), ud.get(UD_OFFSET_Y), ud.get(UD_OFFSET_Z))
     _apply_focal(objs.cam, objs.fx, ud.get(UD_FOCAL))
@@ -353,3 +355,69 @@ def main() -> None:
 
 def message(mid: int, data) -> bool:
     return True
+
+
+def orbit_phase(angle):
+    """The track stores turns; only the spline parameter wraps."""
+    return (_safe_float(angle, 0.0) % 360.0) / 360.0
+
+
+def valid_target(target, objs):
+    """Reject cross-document, self and driven descendants; never mutate a link."""
+    if not isinstance(target, c4d.BaseObject) or target.GetDocument() != objs.rig.GetDocument():
+        return None
+    node = target
+    while node is not None:
+        if node == objs.circle or node == objs.look_target:
+            return None
+        node = node.GetUp()
+    return target
+
+
+def apply_orbit_plane(objs, ud):
+    # Missing controls in unupgraded scenes must not reset a custom circle pose.
+    if "Height" not in ud:
+        return
+    pos = c4d.Vector(*[_safe_float(ud.get(key), 0.0) for key in ("Center X", "Height", "Center Z")])
+    center = valid_target(ud.get("Orbit Center"), objs)
+    if center is not None:
+        pos += ~objs.rig.GetMg() * center.GetMg().off
+    rot = c4d.Vector(*[math.radians(_safe_float(ud.get(key), 0.0))
+                       for key in ("Plane Heading", "Plane Tilt", "Plane Bank")])
+    objs.circle.SetRelPos(pos)
+    objs.circle.SetRelRot(rot)
+
+
+def camera_focal_id(camera):
+    return c4d.RSCAMERAOBJECT_FOCAL_LENGTH if camera.GetType() == 1057516 else c4d.CAMERA_FOCUS
+
+
+def camera_focus_id(camera):
+    return c4d.RSCAMERAOBJECT_FOCUS_DISTANCE if camera.GetType() == 1057516 else c4d.CAMERAOBJECT_TARGETDISTANCE
+
+
+def focus_depth(camera_matrix, position, offset=0.0):
+    axis = camera_matrix.v3.GetNormalized()
+    return max(1.0, (position - camera_matrix.off).Dot(axis) + _safe_float(offset, 0.0))
+
+
+def execute_focus(tag):
+    """Late expression: Align and Target have already evaluated this frame."""
+    objs = get_rig_objects(tag.GetObject())
+    if objs is None:
+        return
+    ud = _read_all_user_data(objs.rig)
+    mode = int(_safe_float(ud.get("Focus Mode"), 0))
+    distance = max(1.0, _safe_float(ud.get(UD_FOCUS_DISTANCE), 1000.0))
+    point = None
+    if mode == 1 and ud.get(UD_USE_TARGET, True) and not ud.get(UD_FREE_CAMERA, False):
+        point = objs.look_target.GetMg().off
+    elif mode == 2:
+        target = valid_target(ud.get("Focus Target"), objs)
+        if target is not None:
+            point = target.GetMg().off
+    if point is not None:
+        distance = focus_depth(objs.fx.GetMg(), point, ud.get("Focus Offset", 0.0))
+    _apply_focus_distance(objs.focus, distance)
+    for camera in (objs.cam, objs.fx):
+        camera[camera_focus_id(camera)] = distance

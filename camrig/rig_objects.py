@@ -35,13 +35,13 @@ def _collect_rig_named_children(rig: c4d.BaseObject) -> Dict[str, c4d.BaseObject
 
 def get_rig_objects(
     circle: c4d.BaseObject,
-    remove_vibrate: bool = True,
+    remove_vibrate: bool = False,
 ) -> Optional[RigObjects]:
     """
     Разрешает объекты рига от контроллера (circle).
     Target_A, Target_B, Look_Target ищутся по имени; цепочка Follow → Offset → RS_CAM → FX_CAM — по иерархии.
     Новые риги: Follow → Offset напрямую. Старые сцены с null Inertia_Follow между ними всё ещё распознаются.
-    remove_vibrate: если True, тег Vibrate на FX_CAM удаляется (для Python Tag). Для Break передать False.
+    remove_vibrate is retained for API compatibility; resolution never mutates the scene.
     При ошибке печатает в Script Log и возвращает None.
     """
     rig = circle.GetUp()
@@ -88,9 +88,6 @@ def get_rig_objects(
         return None
 
     vib = fx.GetTag(c4d.Tvibrate)
-    if remove_vibrate and vib is not None:
-        vib.Remove()
-        vib = None
 
     focus = None
     child_fx = fx.GetDown()
