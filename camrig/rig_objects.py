@@ -12,7 +12,7 @@ from . import log
 
 RigObjects = namedtuple(
     "RigObjects",
-    "rig circle follow offset cam fx align vib target_a target_b look_target target_expr focus",
+    "rig circle follow offset spring cam fx align vib target_a target_b look_target target_expr focus",
 )
 
 
@@ -78,7 +78,13 @@ def get_rig_objects(
     if offset is None:
         log.error("Offset not found under Follow")
         return None
-    cam = offset.GetDown()
+    spring = None
+    first_offset_child = offset.GetDown()
+    if first_offset_child is not None and first_offset_child.GetName().startswith(config.SPRING_OFFSET_NAME):
+        spring = first_offset_child
+        cam = spring.GetDown()
+    else:
+        cam = first_offset_child
     if cam is None:
         log.error("RS_CAM not found under Offset")
         return None
@@ -105,6 +111,7 @@ def get_rig_objects(
         circle=circle,
         follow=follow,
         offset=offset,
+        spring=spring,
         cam=cam,
         fx=fx,
         align=align,

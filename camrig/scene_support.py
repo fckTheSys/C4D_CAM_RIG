@@ -28,8 +28,8 @@ def set_priority(tag, value):
     priority.SetPriorityValue(c4d.PRIORITYVALUE_CAMERADEPENDENT, False)
     tag[c4d.EXPRESSION_PRIORITY] = priority
 
-def configure_priorities(early, align, target, late):
-    for tag, value in ((early, -20), (align, -10), (target, 0), (late, 20)):
+def configure_priorities(early, align, target, late, spring=None):
+    for tag, value in ((early, -20), (align, -10), (spring, -5), (target, 0), (late, 20)):
         if tag is not None:
             set_priority(tag, value)
 

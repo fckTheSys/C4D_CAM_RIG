@@ -156,6 +156,10 @@ def build_cam_rig(
     offset.SetName(names["offset"])
     offset.InsertUnder(follow)
 
+    spring_offset = c4d.BaseObject(c4d.Onull)
+    spring_offset.SetName(config.SPRING_OFFSET_NAME)
+    spring_offset.InsertUnder(offset)
+
     try:
         camera_type = config.RS_CAMERA_ID if c4d.plugins.FindPlugin(config.RS_CAMERA_ID, c4d.PLUGINTYPE_OBJECT) else c4d.Ocamera
         cam = c4d.BaseObject(camera_type)
@@ -164,7 +168,7 @@ def build_cam_rig(
     if cam is None:
         cam = c4d.BaseObject(c4d.Ocamera)
     cam.SetName(names["rs_cam"])
-    cam.InsertUnder(offset)
+    cam.InsertUnder(spring_offset)
 
     try:
         fx = c4d.BaseObject(camera_type)
@@ -212,6 +216,7 @@ def build_cam_rig(
         add_undo(doc, c4d.UNDOTYPE_NEWOBJ, unique_layer)
     follow.SetLayerObject(sys_layer)
     offset.SetLayerObject(sys_layer)
+    spring_offset.SetLayerObject(sys_layer)
     circle.SetLayerObject(sys_layer)
     aim.SetLayerObject(sys_layer)
     focus_obj.SetLayerObject(sys_layer)
@@ -233,7 +238,11 @@ def build_cam_rig(
     late.SetName(config.FOCUS_TAG_NAME)
     late[c4d.TPYTHON_CODE] = source
     circle.InsertTag(late)
-    configure_priorities(py, align, tgt, late)
+    spring_tag = c4d.BaseTag(c4d.Tpython)
+    spring_tag.SetName(config.SPRING_TAG_NAME)
+    spring_tag[c4d.TPYTHON_CODE] = source
+    circle.InsertTag(spring_tag)
+    configure_priorities(py, align, tgt, late, spring_tag)
     set_schema(rig)
 
     return rig

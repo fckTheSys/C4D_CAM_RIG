@@ -13,8 +13,8 @@ from collections import namedtuple
 from typing import Optional, Any, Dict
 
 # --- Зеркало camrig/config.py: версию держать как PLUGIN_VERSION в config.py ---
-EMBEDDED_RUNTIME_VERSION = "1.5.0"
-SCHEMA_VERSION = 2
+EMBEDDED_RUNTIME_VERSION = "1.6.0"
+SCHEMA_VERSION = 3
 NEW_UD_DEFAULTS = {
     "Center X": 0.0, "Height": 0.0, "Center Z": 0.0,
     "Plane Heading": 0.0, "Plane Tilt": 0.0, "Plane Bank": 0.0,
@@ -57,16 +57,21 @@ UD_TARGET_B = "Target B"
 UD_USE_TARGET = "Use Target"
 UD_TARGET_BLEND = "Target Blend"
 UD_FREE_CAMERA = "Free Camera"
+UD_SPRING_AMOUNT = "Spring Amount"
+UD_SPRING_RESPONSE = "Spring Response"
+UD_SPRING_DAMPING = "Spring Damping"
 
 TARGET_A_NAME = "Target_A"
 TARGET_B_NAME = "Target_B"
 LOOK_TARGET_NAME = "Look_Target"
 FOCUS_NAME = "Focus"
+SPRING_OFFSET_NAME = "Spring_Offset"
+SPRING_TAG_NAME = "CamRig Spring 1.6"
 LEGACY_INERTIA_FOLLOW_PREFIX = "Inertia_Follow"
 
 RigObjects = namedtuple(
     "RigObjects",
-    "rig circle follow offset cam fx align vib target_a target_b look_target target_expr focus",
+    "rig circle follow offset spring cam fx align vib target_a target_b look_target target_expr focus",
 )
 
 
@@ -132,7 +137,13 @@ def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = False) -> Opt
         offset = first_child
     if offset is None:
         return None
-    cam = offset.GetDown()
+    spring = None
+    first_offset_child = offset.GetDown()
+    if first_offset_child is not None and first_offset_child.GetName().startswith(SPRING_OFFSET_NAME):
+        spring = first_offset_child
+        cam = spring.GetDown()
+    else:
+        cam = first_offset_child
     if cam is None:
         return None
     fx = cam.GetDown()
@@ -157,6 +168,7 @@ def get_rig_objects(circle: c4d.BaseObject, remove_vibrate: bool = False) -> Opt
         circle=circle,
         follow=follow,
         offset=offset,
+        spring=spring,
         cam=cam,
         fx=fx,
         align=align,
@@ -358,7 +370,9 @@ def _execute(op: c4d.BaseTag) -> None:
 
 def main() -> None:
     """Точка входа Python Tag в сцене (global op)."""
-    if op.GetName() == "CamRig Focus 1.5":
+    if op.GetName() == SPRING_TAG_NAME:
+        execute_spring(op)
+    elif op.GetName() == "CamRig Focus 1.5":
         execute_focus(op)
     else:
         _execute(op)
@@ -437,3 +451,282 @@ def execute_focus(tag):
         _apply_focus_distance(objs.focus, distance)
     for camera in (objs.cam, objs.fx):
         camera[camera_focus_id(camera)] = distance
+
+
+# --- Follow Spring 1.6: self-contained source sampler and solver ---
+SPRING_HZ = 120.0
+_SPRING_CACHE = {"signature": None, "states": {}, "sampler": None}
+_SPRING_UNIT_CIRCLE = None
+_SPRING_AXIS_FIX = c4d.Matrix()
+_SPRING_AXIS_FIX.v1 = c4d.Vector(0, 0, -1)
+_SPRING_AXIS_FIX.v2 = c4d.Vector(0, -1, 0)
+_SPRING_AXIS_FIX.v3 = c4d.Vector(-1, 0, 0)
+
+def _spring_desc(base, component):
+    return c4d.DescID(c4d.DescLevel(base, c4d.DTYPE_VECTOR, 0), c4d.DescLevel(component, c4d.DTYPE_REAL, 0))
+
+def _spring_track_value(obj, desc, time, document, default):
+    track = obj.FindCTrack(desc) if obj is not None else None
+    try:
+        if track is not None:
+            return track.GetValue(document, time, document.GetFps())
+        value = obj[desc]
+        return default if value is None else value
+    except (AttributeError, TypeError, ValueError):
+        return default
+
+def _spring_component(obj, base, component, time, document, default):
+    track = obj.FindCTrack(_spring_desc(base, component)) if obj is not None else None
+    if track is not None:
+        return _safe_float(track.GetValue(document, time, document.GetFps()), default)
+    try:
+        value = obj[base]
+        return _safe_float((value.x, value.y, value.z)[component], default)
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return default
+
+def _spring_transform(obj, time, document):
+    if obj is None:
+        return c4d.Matrix()
+    pos = c4d.Vector(*[_spring_component(obj, c4d.ID_BASEOBJECT_REL_POSITION, c, time, document, 0.0) for c in range(3)])
+    rot = c4d.Vector(*[_spring_component(obj, c4d.ID_BASEOBJECT_REL_ROTATION, c, time, document, 0.0) for c in range(3)])
+    scale = c4d.Vector(*[_spring_component(obj, c4d.ID_BASEOBJECT_REL_SCALE, c, time, document, 1.0) for c in range(3)])
+    matrix = utils.HPBToMatrix(rot)
+    matrix.v1 *= scale.x
+    matrix.v2 *= scale.y
+    matrix.v3 *= scale.z
+    matrix.off = pos
+    parent = obj.GetUp()
+    return (_spring_transform(parent, time, document) * matrix) if parent is not None else matrix
+
+def _spring_ud_desc(rig, name):
+    for desc, bc in rig.GetUserDataContainer():
+        if bc[c4d.DESC_NAME] == name:
+            return desc
+    return None
+
+def _spring_ud(rig, name, time, document, default=0.0):
+    desc = _spring_ud_desc(rig, name)
+    return _spring_track_value(rig, desc, time, document, default) if desc is not None else default
+
+def _spring_sampler():
+    global _SPRING_UNIT_CIRCLE
+    circle = c4d.BaseObject(c4d.Osplinecircle)
+    circle[c4d.PRIM_PLANE] = c4d.PRIM_PLANE_XZ
+    circle[c4d.PRIM_CIRCLE_RADIUS] = 1.0
+    helper = c4d.utils.SplineHelp()
+    if not helper.InitSplineWith(circle, c4d.SPLINEHELPFLAGS_NONE):
+        return None
+    _SPRING_UNIT_CIRCLE = circle
+    return helper
+
+def _spring_base_position(objs, time, document, sampler):
+    phase = (_safe_float(_spring_ud(objs.rig, UD_ORBIT, time, document, 0.0), 0.0) % 360.0) / 360.0
+    radius = max(0.0, _safe_float(_spring_ud(objs.rig, UD_RADIUS, time, document, DEFAULT_RADIUS), DEFAULT_RADIUS))
+    root = _spring_transform(objs.rig, time, document)
+    center = c4d.Vector(
+        _safe_float(_spring_ud(objs.rig, "Center X", time, document, 0.0), 0.0),
+        _safe_float(_spring_ud(objs.rig, "Height", time, document, 0.0), 0.0),
+        _safe_float(_spring_ud(objs.rig, "Center Z", time, document, 0.0), 0.0),
+    )
+    link_desc = _spring_ud_desc(objs.rig, "Orbit Center")
+    link = objs.rig[link_desc] if link_desc is not None else None
+    if isinstance(link, c4d.BaseObject) and link.GetDocument() == document:
+        center += (~root * _spring_transform(link, time, document)).off
+    plane = utils.HPBToMatrix(c4d.Vector(
+        math.radians(_safe_float(_spring_ud(objs.rig, "Plane Heading", time, document, 0.0), 0.0)),
+        math.radians(_safe_float(_spring_ud(objs.rig, "Plane Tilt", time, document, 0.0), 0.0)),
+        math.radians(_safe_float(_spring_ud(objs.rig, "Plane Bank", time, document, 0.0), 0.0)),
+    ))
+    plane.off = center
+    follow = sampler.GetMatrix(phase) * _SPRING_AXIS_FIX
+    follow.off *= radius
+    offset = c4d.Matrix()
+    offset.off = c4d.Vector(
+        _safe_float(_spring_ud(objs.rig, UD_OFFSET_X, time, document, 0.0), 0.0),
+        _safe_float(_spring_ud(objs.rig, UD_OFFSET_Y, time, document, 0.0), 0.0),
+        _safe_float(_spring_ud(objs.rig, UD_OFFSET_Z, time, document, 0.0), 0.0),
+    )
+    return (root * plane * follow * offset).off
+
+def _spring_parameters(response, damping):
+    response = min(100.0, max(0.0, _safe_float(response, 60.0)))
+    damping = min(100.0, max(0.0, _safe_float(damping, 65.0)))
+    return 2.0 * math.pi * (0.5 * (10.0 ** (response / 100.0))), 0.2 + 0.8 * damping / 100.0
+
+def _spring_step_scalar(position, velocity, target0, target1, dt, omega, zeta):
+    if dt <= 0.0:
+        return position, velocity
+    slope = (target1 - target0) / dt
+    y, w = position - target0, velocity - slope
+    a = omega * zeta
+    wd2 = max(0.0, omega * omega - a * a)
+    if wd2 > 1e-12:
+        wd, decay = math.sqrt(wd2), math.exp(-a * dt)
+        cosine, sine = math.cos(wd * dt), math.sin(wd * dt)
+        y1 = decay * (y * cosine + (w + a * y) * sine / wd)
+        w1 = decay * (w * cosine - (a * w + omega * omega * y) * sine / wd)
+    else:
+        decay = math.exp(-a * dt)
+        y1 = decay * (y + (w + a * y) * dt)
+        w1 = decay * (w - a * (w + a * y) * dt)
+    return y1 + target1, w1 + slope
+
+def _spring_step(position, velocity, target0, target1, dt, omega, zeta):
+    values = [_spring_step_scalar(position[i], velocity[i], target0[i], target1[i], dt, omega, zeta) for i in range(3)]
+    return tuple(x[0] for x in values), tuple(x[1] for x in values)
+
+def _spring_vector_tuple(value):
+    return (value.x, value.y, value.z)
+
+def _spring_node_track_signature(node):
+    """Capture supported source tracks without sampling their current value."""
+    if node is None:
+        return None
+    result = []
+    try:
+        tracks = node.GetCTracks()
+    except (AttributeError, TypeError, ReferenceError):
+        return None
+    for track in tracks:
+        try:
+            curve = track.GetCurve()
+            keys = []
+            if curve is not None:
+                for index in range(curve.GetKeyCount()):
+                    key_data = curve.GetKey(index)
+                    keys.append((key_data.GetTime().Get(), key_data.GetValue(),
+                                 key_data.GetInterpolation(), key_data.GetTimeLeft().Get(),
+                                 key_data.GetTimeRight().Get(), key_data.GetValueLeft(),
+                                 key_data.GetValueRight()))
+            result.append((str(track.GetDescriptionID()), tuple(keys)))
+        except (AttributeError, TypeError, ValueError, ReferenceError, IndexError):
+            result.append((str(track.GetDescriptionID()), "unreadable"))
+    return tuple(result)
+
+def _spring_chain_signature(node):
+    values = []
+    while node is not None:
+        values.append((repr(node), _spring_node_track_signature(node)))
+        node = node.GetUp()
+    return tuple(values)
+
+def _spring_source_supported(objs):
+    """Reject source history that cannot be reconstructed from ordinary CTracks."""
+    nodes = []
+    for start in (objs.rig,):
+        node = start
+        while node is not None:
+            nodes.append(node)
+            node = node.GetUp()
+    link_desc = _spring_ud_desc(objs.rig, "Orbit Center")
+    try:
+        link = objs.rig[link_desc] if link_desc is not None else None
+    except (AttributeError, TypeError, ValueError, ReferenceError):
+        link = None
+    if isinstance(link, c4d.BaseObject):
+        node = link
+        while node is not None:
+            nodes.append(node)
+            node = node.GetUp()
+    for node in nodes:
+        try:
+            for base in (c4d.ID_BASEOBJECT_REL_SCALE,):
+                for component in range(3):
+                    if node.FindCTrack(_spring_desc(base, component)) is not None:
+                        return False
+            if node.GetTags():
+                return False
+        except (AttributeError, TypeError, ReferenceError):
+            return False
+    return True
+
+def _spring_signature(objs):
+    values = [SCHEMA_VERSION, EMBEDDED_RUNTIME_VERSION]
+    for key in (UD_SPRING_RESPONSE, UD_SPRING_DAMPING, UD_ORBIT, UD_RADIUS,
+                "Center X", "Height", "Center Z", "Plane Heading", "Plane Tilt", "Plane Bank",
+                UD_OFFSET_X, UD_OFFSET_Y, UD_OFFSET_Z):
+        desc = _spring_ud_desc(objs.rig, key)
+        if desc is None:
+            values.append((key, None))
+            continue
+        track = objs.rig.FindCTrack(desc)
+        keys = []
+        if track is not None and track.GetCurve() is not None:
+            curve = track.GetCurve()
+            for index in range(curve.GetKeyCount()):
+                key_data = curve.GetKey(index)
+                keys.append((key_data.GetTime().Get(), key_data.GetValue(), key_data.GetInterpolation(),
+                             key_data.GetTimeLeft().Get(), key_data.GetTimeRight().Get(),
+                             key_data.GetValueLeft(), key_data.GetValueRight()))
+        if track is None:
+            try:
+                current_value = repr(objs.rig[desc])
+            except (AttributeError, TypeError, ValueError, ReferenceError):
+                current_value = "<unavailable>"
+        else:
+            current_value = "animated"
+        values.append((key, current_value, tuple(keys)))
+    values.append(("rig_chain_tracks", _spring_chain_signature(objs.rig)))
+    link_desc = _spring_ud_desc(objs.rig, "Orbit Center")
+    try:
+        link = objs.rig[link_desc] if link_desc is not None else None
+    except (AttributeError, TypeError, ValueError, ReferenceError):
+        link = None
+    values.append(("orbit_center", repr(link), _spring_node_track_signature(link)))
+    return tuple(values)
+
+def execute_spring(tag):
+    objs = get_rig_objects(tag.GetObject())
+    if objs is None or objs.spring is None:
+        return
+    document = tag.GetDocument()
+    if document.GetTime().Get() < document.GetMinTime().Get():
+        _SPRING_CACHE["states"] = {}
+        _SPRING_CACHE["sampler"] = None
+        objs.spring.SetRelPos(c4d.Vector(0))
+        return
+    amount = max(0.0, min(100.0, _safe_float(_spring_ud(objs.rig, "Spring Amount", document.GetTime(), document, 0.0), 0.0)))
+    base_now = _spring_base_position(objs, document.GetTime(), document, _SPRING_CACHE["sampler"] or _spring_sampler())
+    if amount <= 0.0:
+        _SPRING_CACHE["states"] = {}
+        _SPRING_CACHE["sampler"] = None
+        objs.spring.SetRelPos(c4d.Vector(0))
+        return
+    if not _spring_source_supported(objs):
+        objs.spring.SetRelPos(c4d.Vector(0))
+        return
+    if _SPRING_CACHE["sampler"] is None:
+        _SPRING_CACHE["sampler"] = _spring_sampler()
+    signature = _spring_signature(objs)
+    if signature != _SPRING_CACHE["signature"]:
+        _SPRING_CACHE["signature"] = signature
+        _SPRING_CACHE["states"] = {}
+    start = document.GetMinTime().Get()
+    requested = max(start, document.GetTime().Get())
+    step = 1.0 / SPRING_HZ
+    index = int(math.floor((requested - start) / step + 1e-9))
+    states = _SPRING_CACHE["states"]
+    if 0 not in states:
+        base = _spring_base_position(objs, c4d.BaseTime(start), document, _SPRING_CACHE["sampler"])
+        states[0] = (base, c4d.Vector(0))
+    for current in range(max(states), index):
+        t0, t1 = start + current * step, start + (current + 1) * step
+        q0 = _spring_base_position(objs, c4d.BaseTime(t0), document, _SPRING_CACHE["sampler"])
+        q1 = _spring_base_position(objs, c4d.BaseTime(t1), document, _SPRING_CACHE["sampler"])
+        mid = c4d.BaseTime((t0 + t1) * 0.5)
+        omega, zeta = _spring_parameters(_spring_ud(objs.rig, "Spring Response", mid, document, 60.0), _spring_ud(objs.rig, "Spring Damping", mid, document, 65.0))
+        p, v = _spring_step(_spring_vector_tuple(states[current][0]), _spring_vector_tuple(states[current][1]), _spring_vector_tuple(q0), _spring_vector_tuple(q1), step, omega, zeta)
+        states[current + 1] = (c4d.Vector(*p), c4d.Vector(*v))
+    fraction = requested - (start + index * step)
+    q0 = _spring_base_position(objs, c4d.BaseTime(start + index * step), document, _SPRING_CACHE["sampler"])
+    q1 = _spring_base_position(objs, c4d.BaseTime(start + (index + 1) * step), document, _SPRING_CACHE["sampler"])
+    interval_mid = c4d.BaseTime(start + (index + 0.5) * step)
+    omega, zeta = _spring_parameters(_spring_ud(objs.rig, "Spring Response", interval_mid, document, 60.0), _spring_ud(objs.rig, "Spring Damping", interval_mid, document, 65.0))
+    spring_position, _ = _spring_step(_spring_vector_tuple(states[index][0]), _spring_vector_tuple(states[index][1]), _spring_vector_tuple(q0), _spring_vector_tuple(q1), fraction, omega, zeta)
+    correction = (c4d.Vector(*spring_position) - base_now) * (amount / 100.0)
+    parent = objs.spring.GetUp()
+    local = (~parent.GetMg()).MulV(correction) if parent is not None else correction
+    objs.spring.SetRelPos(local)
+    objs.spring.SetRelRot(c4d.Vector(0))
+    objs.spring.SetRelScale(c4d.Vector(1))
