@@ -31,6 +31,11 @@ boundary. Production operations such as bake, overwrite-save, render and
 batch are intentionally not silently emulated; they will be added only when
 the underlying CamRig command has a verified implementation.
 
+`camrig_capture_viewport` is the exception for QA: it uses Cinema 4D's
+Preview Hardware `RenderDocument` path, temporarily selects the rig FX camera,
+restores the viewport state, and writes a PNG plus metadata. It does not need
+ComfyUI or the Lesta bridge.
+
 Example intent:
 
 ```text

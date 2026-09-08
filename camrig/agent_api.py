@@ -9,6 +9,7 @@ from .scene_support import undo_group, add_undo
 from .rig_reset import reset_rig_params
 from .rig_assemble import build_cam_rig
 from .diagnostics import inspect_rig
+from .viewport_capture import capture
 
 def _response(doc, rig=None, changes=None, warnings=None, errors=None):
     return {"ok":not errors,"scene":{"document":doc.GetDocumentName(),"current_frame":doc.GetTime().GetFrame(doc.GetFps())},
@@ -158,6 +159,11 @@ def batch(doc, payload):
             else: raise ValueError("Unsupported batch action: "+action)
     return {"ok":True,"scene":{"document":doc.GetDocumentName()},"rig":None,"changes":[],"state":{"batch":{"action":action,"rigs":[rig_state(doc,r) for r in selected]}},"warnings":[],"errors":[]}
 
+def capture_viewport(doc, payload):
+    rig=resolve_rig(doc,payload["rig"])
+    result=capture(doc,rig.GetName(),payload["path"],payload.get("frame"),payload.get("width",1280),payload.get("height",720))
+    response=_response(doc,rig); response["state"]={"capture":result}; return response
+
 def reset(doc, rig_ref, group="all"):
     rig=resolve_rig(doc,rig_ref)
     groups=[group] if isinstance(group,str) else list(group)
@@ -189,4 +195,5 @@ def dispatch(doc, action, payload):
     if action=="save_scene": return save_scene(doc,payload.get("path"),payload.get("confirm",False))
     if action=="bake_camera": return bake_camera(doc,payload["rig"],payload.get("confirm",False))
     if action=="batch": return batch(doc,payload)
+    if action=="capture_viewport": return capture_viewport(doc,payload)
     raise ValueError("Unsupported action: " + action)
