@@ -20,6 +20,8 @@ const TOOLS = [
   ["camrig_reset","Reset a control group",{rig:{type:"string"},group:{type:"string"}}],
   ["camrig_upgrade","Upgrade a known legacy rig",{rig:{type:"string"}}],
   ["camrig_create","Create a new CamRig",{name:{type:"string"}}],
+  ["camrig_duplicate","Duplicate a CamRig",{rig:{type:"string"},name:{type:"string"}}],
+  ["camrig_save_scene","Save the active document",{path:{type:"string"},confirm:{type:"boolean"}}],
   ["camrig_undo","Undo the last Cinema 4D operation",{}],
   ["camrig_redo","Redo the last Cinema 4D operation",{}],
 ];

@@ -1,5 +1,6 @@
 """High-level CamRig operations used by the local MCP proxy."""
 import c4d
+import os
 from . import config
 from .agent_schema import CONTROL_SPECS, LINK_KEYS, validate_controls
 from .agent_state import resolve_rig, resolve_object, rig_state, scene_state, rigs
@@ -95,6 +96,23 @@ def set_keyframes(doc, rig_ref, tracks, interpolation="linear", replace_existing
                 if kd: kd["key"].SetValue(curve,item["value"])
     return _response(doc,rig)
 
+def duplicate(doc, rig_ref, name=None):
+    source=resolve_rig(doc,rig_ref)
+    clone=source.GetClone(c4d.COPYFLAGS_NONE)
+    if clone is None: raise RuntimeError("Could not clone CamRig")
+    clone.SetName(name or source.GetName()+"_Copy")
+    with undo_group(doc):
+        doc.InsertObject(clone); add_undo(doc,c4d.UNDOTYPE_NEWOBJ,clone)
+    return _response(doc,clone)
+
+def save_scene(doc, path, confirm=False):
+    if not path: raise ValueError("path is required")
+    path=os.path.abspath(path)
+    if os.path.exists(path) and not confirm: raise ValueError("CONFIRMATION_REQUIRED: overwrite requires confirm=true")
+    result=c4d.documents.SaveDocument(doc,path,c4d.SAVEDOCUMENTFLAGS_0,c4d.FORMAT_C4DEXPORT)
+    if not result: raise RuntimeError("Could not save Cinema 4D document")
+    return _response(doc)
+
 def reset(doc, rig_ref, group="all"):
     rig=resolve_rig(doc,rig_ref)
     groups=[group] if isinstance(group,str) else list(group)
@@ -120,4 +138,6 @@ def dispatch(doc, action, payload):
     if action=="create":
         with undo_group(doc): rig=build_cam_rig(doc,record_undo=True); rig.SetName(payload.get("name",rig.GetName()))
         return _response(doc,rig)
+    if action=="duplicate": return duplicate(doc,payload["rig"],payload.get("name"))
+    if action=="save_scene": return save_scene(doc,payload.get("path"),payload.get("confirm",False))
     raise ValueError("Unsupported action: " + action)
