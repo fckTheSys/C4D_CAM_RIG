@@ -1,3 +1,5 @@
+> Historical/reference specification. Features mentioned here are not necessarily implemented. See [SUMMARY](SUMMARY.md) and [UD reference](UDref.md) for 1.5.
+
 # Camera Rig Builder
 ## Technical Specification
 Cinema 4D 2026

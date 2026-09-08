@@ -1,3 +1,5 @@
+> Historical/reference document, not the implemented 1.5 contract. Current behavior: [SUMMARY](SUMMARY.md) and [UD reference](UDref.md).
+
 # Python Tag and Button Interaction
 ## Cinema 4D 2026 – Camera Rig Builder
 

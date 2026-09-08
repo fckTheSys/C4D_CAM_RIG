@@ -1,24 +1,17 @@
-# C4D Cam Rig (Cam Rig Builder)
+# CamRig 1.5.0 — development
 
-Cinema 4D Python command plugin, v1.4.0.
+Орбитальный камерный риг для Cinema 4D 2026.2. Концепция сохранена: круг → Follow → Offset → камера → FX (Rotation, Shake, Drift).
 
-CamRig creates an orbital camera rig controlled by User Data on `Cam_Rig`. It supports Target A/B blending, offset and rotation, focal/focus controls, procedural shake and optional drift. The complete runtime is embedded into a Python Tag so scenes can remain portable.
+Управление находится в User Data корня Cam_Rig. В 1.5 добавлены свободные обороты Orbit, высота/центр/HPB круга, независимый Orbit Center, Aim Offset и независимый автофокус. Сцена хранит полный runtime в двух Python Tags.
 
-## Requirements
+- [Установка](INSTALL.md)
+- [Таблица всех 34 параметров](docs/UDref.md)
+- [Архитектура и поведение](docs/SUMMARY.md)
+- [Upgrade старых ригов](docs/UPGRADE_1_5.md)
+- [Проверки и оставшиеся ограничения](docs/ACCEPTANCE_1_5.md)
+- [MCP runbook](docs/MCP_SETUP.md)
+- [Изменения](CHANGELOG.md)
 
-- Cinema 4D 2026 with Python support.
-- Redshift is optional; the builder falls back to a standard camera.
+Версия development, не публичный релиз. Автоматические Show/Hide HUD не реализованы: Python API C4D не предоставляет создание нативных HUD-элементов. Ручной Add to HUD возможен; альтернативный интерфейс требует выбора владельца.
 
-## Installation
-
-Copy the complete repository folder into the active Cinema 4D `plugins` directory. `cam_rig_builder.pyp` and the `camrig` folder must be siblings. Restart Cinema 4D and check Script Log for `[CamRig] v1.4.0 loaded`.
-
-See [INSTALL.md](INSTALL.md) for the full procedure.
-
-## Development
-
-- Architecture: [docs/SUMMARY.md](docs/SUMMARY.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- MCP setup: [docs/MCP_SETUP.md](docs/MCP_SETUP.md)
-- Release notes: [CHANGELOG.md](CHANGELOG.md)
-
-Keep `PLUGIN_VERSION` and `EMBEDDED_RUNTIME_VERSION` synchronized. Obtain unique PluginCafe IDs before public distribution.
+Redshift необязателен: предусмотрена стандартная камера. Условия лицензирования не менялись; существующий MIT LICENSE конфликтует с коммерческим текстом production-сборщика. До решения владельца сборку не распространять.

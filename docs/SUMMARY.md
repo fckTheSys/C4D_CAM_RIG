@@ -1,94 +1,52 @@
-# CamRig — подробное саммари
+# CamRig 1.5.0 — текущее поведение
 
-Версия плагина в коде: `camrig/config.py` (`PLUGIN_VERSION`, `PLUGIN_SLUG`). Для этого проекта источником версии является `camrig/config.py`; общей workspace-таблицы версий в текущем checkout нет.
+Источники истины: config.py, ud_template.json, tag_embedded.py и тесты. Формат рига: schema 2; отсутствие маркера означает legacy. [Параметры](UDref.md), [Upgrade](UPGRADE_1_5.md), [приёмка](ACCEPTANCE_1_5.md).
 
-## 1. Назначение
+## Структура
 
-Cam Rig Builder — плагин Cinema 4D для создания **орбитального** камерного рига. Риг управляется через **User Data** на объекте **Cam_Rig**: орбита, offset, focal, target, shake. Python Tag на **Main_Camera** каждый кадр читает UD и применяет их к объектам.
+Иерархия 1.4 сохранена: корень с Target_A, Target_B, Look_Target и кругом Main_Camera; под кругом Follow → Offset → RS_CAM → FX_CAM → Focus. Камеры могут быть standard или Redshift. Промежуточный legacy Inertia_Follow разрешается, но инерция не рассчитывается.
 
-**Не входит в продукт:** Motion Camera rig (Tmotioncam), инерция камеры и UD «Inertia». Старые сцены с `Motion_Cam_Rig` или встроенным слоем инерции плагин не мигрирует; орбитальный риг по-прежнему можно открыть, если иерархия совместима (см. ниже про legacy `Inertia_Follow`).
+На корне находятся 34 контрола в восьми группах. Внешние ссылки не сбрасываются Reset All. Трансформация корня не меняется командами Reset.
 
----
+## Вычисление
 
-## 2. Архитектура
+Обе стадии содержат полный автономный tag_embedded.py без импорта camrig и чтения файлов. Не переименовывайте служебные теги: имя позднего тега определяет стадию.
 
-Схема модулей и граница с **`tag_embedded.py`**: **[`ARCHITECTURE.md`](ARCHITECTURE.md)**.
+| Стадия | Expression priority | Назначение |
+|---|---:|---|
+| CamRig Runtime 1.5 | -20 | Разрешение объектов, UD, плоскость/фаза, Offset/Rotation, focal, Shake/Drift, смешивание целей и Aim Offset |
+| Align to Spline | -10 | Положение и направление Follow |
+| Target Expression | 0 | Ориентация основной камеры |
+| CamRig Focus 1.5 | 20 | Фокус по итоговой матрице FX-камеры |
 
-| Файл | Роль |
-|------|------|
-| `camrig/config.py` | Константы, имена UD, дефолты, ID плагинов, `DEBUG_LOG` |
-| `camrig/rig_builder.py` | Фасад: реэкспорт `build_cam_rig`, Reset/Break, примитивов UD, `validate_ud_template_vs_config` |
-| `camrig/rig_assemble.py` | Сборка иерархии рига и Python Tag из `tag_embedded.py` |
-| `camrig/ud_build.py` | Примитивы UD, загрузка `ud_template.json`, валидация совпадения с `UD_DEFAULTS` при старте |
-| `camrig/rig_reset.py` / `rig_break.py` | Сброс UD и Break (перенос треков) |
-| `camrig/ud_utils.py`, `log.py`, `user_data.py` | Общие хелперы |
-| `camrig/tag_embedded.py` | **Единственная логика рантайма** для портируемых сцен: тот же код копируется в `TPYTHON_CODE`. `EMBEDDED_RUNTIME_VERSION` = `PLUGIN_VERSION` |
-| `camrig/python_tag_logic.py` | Тонкая обёртка: вызывает `tag_embedded` при установленном плагине |
-| `camrig/rig_objects.py` | Разрешение объектов для Break (`get_rig_objects`) |
-| `camrig/ud_template.json` | Группы UD: Orbit, Transform, Camera, Shake, Target |
-| `cam_rig_builder.pyp` | Командный плагин (диалог), CamRigRoot ObjectData |
+Orbit хранит градусы без ограничения числа оборотов. Только spline phase получает (Orbit % 360) / 360. Значения UD и ключи не переписываются. Radius ограничен снизу нулём; soft slider не является пределом допустимого значения.
 
-**Поток данных:** User Data (Cam_Rig) → Python Tag → чтение UD → применение к circle, align, offset, cam, fx, look_target, focus.
+Центр внешнего Orbit Center преобразуется из world в root local; далее прибавляются Center X / Height / Center Z. Вращение и масштаб внешней цели не наследуются. HPB круга применяется вокруг его центра. Внутренние Target_A/B не перемещаются вслед за Height и Plane Tilt.
 
----
+Aim Offset задаётся в координатах корня и добавляется к смешанной мировой точке A/B. Focus Mode Manual использует Focus Distance; Look Target — итоговую точку взгляда при включённом targeting; Focus Target — отдельную ссылку. Для автофокуса используется проекция на оптическую ось FX плюс Focus Offset, минимум 1. При недействительной цели используется ручная дистанция. DOF и диафрагма не включаются автоматически.
 
-## 3. Иерархия рига (текущая сборка)
+Прямые ссылки на управляемую ветвь камеры и Look_Target не используются; Inspector объясняет отказ. Общий анализ циклов через чужие XPresso/constraints не реализован.
 
-```
-Cam_Rig              ← корень (CamRigRoot или Onull)
-├── Target_A
-├── Target_B
-├── Look_Target
-└── Main_Camera      ← Osplinecircle, Python Tag (полный tag_embedded.py)
-    └── Follow       ← null + Align to Spline (орбита по circle)
-        └── Offset   ← null (XYZ из UD); прямой потомок Follow
-            └── RS_CAM        ← Target Expression → Look_Target
-                └── FX_CAM    ← Rot H/P/B, Shake
-                    └── Focus ← null (Focus Distance)
-```
+## Команды
 
-**Legacy:** в старых сценах между Follow и Offset мог оставаться null с именем, начинающимся с `Inertia_Follow`. Рантайм и `get_rig_objects` по-прежнему находят Offset как потомка этого null, но инерция не вычисляется.
+Select Rig/Orbit/Targets и Look Through Camera разрешают риг по выделению. Если кандидатов несколько, диалог предлагает выбор; программные вызовы без интерактива возвращают ошибку неоднозначности.
 
----
+Upgrade — явная миграция известного legacy runtime. Repair восстанавливает отсутствующие компоненты известных schema-2 ригов и их приоритеты, не подменяет пользовательский код. Структурных удалений из expression нет.
 
-## 4. User Data (на Cam_Rig)
+Break не является Bake Camera. Он блокирует новые значения/анимацию Orbit Rig, Aim Offset, автофокус и новые ссылки, а также любой анимированный Orbit и значения вне одного оборота. Полный bake остаётся отдельной задачей.
 
-| Группа | Параметры | Куда применяется |
-|--------|-----------|------------------|
-| Orbit | Orbit, Radius | Align Position; радиус circle |
-| Transform | Offset X/Y/Z, Rot H/P/B | Offset; вращение FX_CAM |
-| Camera | Focal Length, Focus Distance | Обе камеры; Focus |
-| Shake | Enable, Pos, Rot, Drift Pos, Drift Rot, Drift Frequency | Процедурный noise и медленный drift на FX_CAM |
-| Target | Use Target, Target A/B, Blend, Free Camera | Target Expression; позиция Look_Target |
+HUD Show/Hide не реализованы; нативный HUD можно настроить вручную через Add to HUD в Attribute Manager. Никакие чужие HUD-элементы не изменяются.
 
----
+## Модули
 
-## 5. Python Tag (каждый кадр)
+- rig_builder.py — сохранённый публичный фасад.
+- rig_assemble.py — сборка иерархии, тегов, слоёв, UD.
+- commands.py — выбор/навигация, preflight и Upgrade, защита Break.
+- scene_support.py — schema metadata, приоритеты и Undo.
+- ud_build.py / ud_template.json — UI-схема, числовые границы отдельно от slider.
+- tag_embedded.py — автономные runtime и математические функции.
+- rig_reset.py / rig_break.py — Reset и ограниченный перенос старых контролов.
+- diagnostics.py — Inspector и Repair.
+- tests/c4d_acceptance.py — сценарии в настоящем C4D; tools/check_project.py — статические проверки.
 
-Реализация — в `tag_embedded.py` (идентично встроенному коду в сцене).
-
-1. `get_rig_objects(circle)` — см. `rig_objects.py` / зеркало в embedded.
-2. `_read_all_user_data(rig)` (fallback: circle).
-3. Применение orbit, offset, focal, focus, shake, target.
-
----
-
-## 6. Break User Data
-
-Как раньше: перенос анимированных UD на объекты, снятие слоёв, удаление Python Tag с Main_Camera. См. `rig_builder.break_rig_user_data`.
-
----
-
-## 7. Диалог плагина
-
-- **Create Rig** — орбитальный риг в корне документа (или в позиции выбранного null / CamRigRoot).
-- **Break User Data**
-- **Reset** — группы orbit, transform, camera, target, shake; Reset All.
-- **Rig Inspector** — проверка иерархии, тегов и embedded runtime.
-- **Repair Selected Rig** — безопасное восстановление Align tag, Target tag, Focus и Python Tag, если они отсутствуют.
-
----
-
-## 8. Версионирование
-
-При изменении логики обновляйте **`PLUGIN_VERSION`** в `config.py`, **`EMBEDDED_RUNTIME_VERSION`** в `tag_embedded.py` и запись в корневом **`CHANGELOG.md`**.
+Исторические Interaction, Technical Specification и deep-research-report не описывают гарантированные текущие возможности. Spline Position, Speed Offset, presets, arbitrary spline, spherical orbit, inertia и gizmo-контрол плоскости не реализованы.

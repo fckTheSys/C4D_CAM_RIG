@@ -1,110 +1,61 @@
----
+# CamRig 1.5 — User Data reference
 
-# 14. User Data Reference
+Все параметры находятся на корне **Cam_Rig**, не на Main_Camera. Таблица сверена с ud_template.json. Угловые значения — обычные числа в градусах; их числовая семантика не меняется на радианы.
 
-Этот раздел описывает все параметры **User Data**, расположенные на объекте **Main_Camera**.
+Hard limits ограничивают ввод, slider range — только удобный диапазон ползунка. «Без границ» означает конечное число типа REAL, не поддержку NaN/Infinity.
 
-User Data формируют основной интерфейс рига и используются Python Tag для управления системой.
+| Группа | Постоянный ключ | Параметр | Тип | По умолчанию | Hard limits | Slider |
+|---|---|---|---|---|---|---|
+| Orbit | `orbit` | Orbit | real | 0 | −∞ … +∞ | 0 … 360 |
+| Orbit | `radius` | Radius | real | 500 | 0 … +∞ | 0 … 5000 |
+| Transform | `offset_x` | Offset X | real | 0 | -2000 … 2000 | -2000 … 2000 |
+| Transform | `offset_y` | Offset Y | real | 0 | -2000 … 2000 | -2000 … 2000 |
+| Transform | `offset_z` | Offset Z | real | 0 | -2000 … 2000 | -2000 … 2000 |
+| Transform | `rot_h` | Rot H | real | 0 | -180 … 180 | — |
+| Transform | `rot_p` | Rot P | real | 0 | -180 … 180 | — |
+| Transform | `rot_b` | Rot B | real | 0 | -180 … 180 | — |
+| Camera | `focal_length` | Focal Length | real | 36 | 10 … 200 | 10 … 200 |
+| Camera | `focus_distance` | Focus Distance | real | 1000 | 1 … 100000 | 1 … 100000 |
+| Shake | `shake_enable` | Shake Enable | bool | false | — | — |
+| Shake | `shake_pos` | Shake Pos | real | 5 | 0 … 100 | 0 … 100 |
+| Shake | `shake_rot` | Shake Rot | real | 1 | 0 … 20 | 0 … 20 |
+| Shake | `drift_pos` | Drift Pos | real | 0 | 0 … 50 | 0 … 50 |
+| Shake | `drift_rot` | Drift Rot | real | 0 | 0 … 10 | 0 … 10 |
+| Shake | `drift_frequency` | Drift Frequency | real | 0.08 | 0.01 … 1 | 0.01 … 1 |
+| Target | `use_target` | Use Target | bool | true | — | — |
+| Target | `target_a` | Target A | link | target_a | — | — |
+| Target | `target_b` | Target B | link | target_b | — | — |
+| Target | `target_blend` | Target Blend | real | 0 | 0 … 100 | 0 … 100 |
+| Target | `free_camera` | Free Camera | bool | false | — | — |
+| Orbit Rig | `center_x` | Center X | real | 0 | −∞ … +∞ | -2000 … 2000 |
+| Orbit Rig | `height` | Height | real | 0 | −∞ … +∞ | -2000 … 2000 |
+| Orbit Rig | `center_z` | Center Z | real | 0 | −∞ … +∞ | -2000 … 2000 |
+| Orbit Rig | `plane_h` | Plane Heading | real | 0 | −∞ … +∞ | -180 … 180 |
+| Orbit Rig | `plane_p` | Plane Tilt | real | 0 | −∞ … +∞ | -180 … 180 |
+| Orbit Rig | `plane_b` | Plane Bank | real | 0 | −∞ … +∞ | -180 … 180 |
+| Orbit Rig | `orbit_center` | Orbit Center | link | пусто | — | — |
+| Aim Offset | `aim_x` | Aim Offset X | real | 0 | −∞ … +∞ | — |
+| Aim Offset | `aim_y` | Aim Offset Y | real | 0 | −∞ … +∞ | — |
+| Aim Offset | `aim_z` | Aim Offset Z | real | 0 | −∞ … +∞ | — |
+| Focus | `focus_mode` | Focus Mode | enum | Manual | Manual / Look Target / Focus Target | — |
+| Focus | `focus_target` | Focus Target | link | пусто | — | — |
+| Focus | `focus_offset` | Focus Offset | real | 0 | −∞ … +∞ | — |
 
----
+## Практическое поведение
 
-# Motion
+- Orbit 0 → 1080 — три прямых оборота; 0 → −720 — два обратных. При нескольких оборотах используйте числовой ввод и F-Curve, не только slider.
+- Center X / Height / Center Z перемещают круг в координатах корня, а не внутренние Target A/B. Plane Heading/Tilt/Bank вращают круг вокруг его центра.
+- Orbit Center наследует только мировую позицию внешнего объекта. Масштаб и вращение этой цели игнорируются.
+- Aim Offset X/Y/Z добавляется после Target Blend в координатах корня.
+- Manual оставляет ручной Focus Distance. Look Target работает при Use Target и выключенном Free Camera; иначе manual. Focus Target при пустой/недействительной ссылке также использует manual.
+- Автофокус = глубина точки вдоль оси итоговой FX-камеры + Focus Offset, минимум 1. DOF/диафрагма не включаются.
+- Reset All сохраняет все ссылки и трансформацию корня. Ключи не удаляет: следующий animation evaluation снова применит F-Curve.
+- Прямые циклические ссылки игнорируются runtime; Inspector объясняет причину. Сама пользовательская ссылка не стирается.
 
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Orbit | Float / Slider | -360 → 360 | вращение камеры вокруг центра |
-| Radius | Float / Slider | 0 → ∞ | расстояние камеры от центра |
-| Height | Float | -∞ → ∞ | вертикальное смещение камеры |
-| Spline Position | Float | 0 → 100 | положение камеры вдоль сплайна |
-| Speed Offset | Float | -∞ → ∞ | дополнительное смещение движения |
+## Не реализовано
 
----
+Spline Position, Speed Offset, движение по произвольному сплайну, spherical orbit, presets, inertia и управление кругом gizmo не являются контролами 1.5.
 
-# Offset
+Show/Hide Rig HUD пока отсутствуют. Нативный HUD можно создать вручную: выделить нужные User Data в Attribute Manager → контекстное меню Add to HUD. Рекомендуемый набор: Orbit, Radius, Height, Plane Tilt, Focal Length. Это исходные UD, не копии; работу через HUD ещё нужно принять вручную. [Ограничение Python SDK](https://developers.maxon.net/forum/topic/14678/python-script-is-add-to-hud-possible-to-add-to-my-python-script).
 
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Offset X | Float | -∞ → ∞ | локальное смещение камеры по X |
-| Offset Y | Float | -∞ → ∞ | локальное смещение камеры по Y |
-| Offset Z | Float | -∞ → ∞ | локальное смещение камеры по Z |
-
----
-
-# Rotation
-
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Heading | Float | -180 → 180 | поворот камеры по горизонтали |
-| Pitch | Float | -180 → 180 | наклон камеры |
-| Bank | Float | -180 → 180 | крен камеры |
-
----
-
-# Lens
-
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Focal Length | Float | 10 → 300 | фокусное расстояние камеры |
-| Focus Distance | Float | 0 → ∞ | дистанция фокусировки |
-| Depth of Field | Bool | on/off | включает DOF |
-
----
-
-# Targeting
-
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Target A | Link | object | первая цель |
-| Target B | Link | object | вторая цель |
-| Use Target B | Bool | on/off | включает вторую цель |
-| Target Blend | Float / Slider | 0 → 100 | смешивание между целями |
-
----
-
-# Camera FX
-
-| Parameter | Type | Range | Description |
-|----------|------|------|-------------|
-| Shake Enable | Bool | on/off | включает эффект тряски |
-| Shake Amplitude | Float | 0 → ∞ | амплитуда тряски |
-| Shake Frequency | Float | 0 → ∞ | частота шума |
-| Noise Seed | Integer | 0 → ∞ | seed генератора шума |
-
----
-
-# Utilities
-
-| Parameter | Type | Description |
-|----------|------|-------------|
-| Snap to Target A | Button | мгновенно переводит взгляд на Target A |
-| Snap to Target B | Button | мгновенно переводит взгляд на Target B |
-| Reset Offsets | Button | сбрасывает Offset параметры |
-| Create Targets | Button | создаёт Target_A, Target_B, Look_Target |
-| Frame Selected | Button | устанавливает камеру относительно выбранного объекта |
-
----
-
-# Internal Parameters
-
-Эти параметры используются системой и могут быть скрыты от пользователя.
-
-| Parameter | Type | Description |
-|----------|------|-------------|
-| Internal Look Target | Link | ссылка на объект Look_Target |
-| Internal Follow Node | Link | ссылка на объект Follow |
-| Internal Offset Node | Link | ссылка на объект Offset |
-| Internal Camera | Link | ссылка на RS_CAM |
-
----
-
-# JSON-шаблон (ud_template.json)
-
-Параметры типа **real** (Float) поддерживают поле `"interface"` — как отображать значение в C4D. Допустимые значения (соответствуют выпадающему списку Interface в свойствах User Data):
-
-| Значение в JSON | Интерфейс в C4D |
-|-----------------|------------------|
-| `float` | Float |
-| `slider`, `float_slider` | Float Slider |
-| `float_slider_no_editfield` | Float Slider (No Editfield) |
-| `latitude_longitude`, `latlong` | Latitude/Longitude |
-| `rsslider` | RSSlider |
+[Upgrade](UPGRADE_1_5.md) · [Проверки](ACCEPTANCE_1_5.md)

@@ -23,13 +23,13 @@ Full Python mode is intentionally enabled for this development setup. `exec_pyth
 4. In a disposable scene, create one test object, inspect it, remove it, and verify Undo in Cinema 4D.
 5. Load CamRig and verify Create Rig, User Data, Python Tag, Reset, and Break.
 
-If the server is `enabled / Unsupported` in an already-open Codex task, start a fresh local task after configuration changes so the tool inventory is reloaded.
+`Unsupported` in CLI auth status does not prove tools unavailable. Test an actual ping first; refresh the task tool inventory only if tools are genuinely missing.
 
 ## Static checks
 
 ```powershell
-& 'C:\Program Files\Maxon Cinema 4D 2026\resource\modules\python\libs\win64\python.exe' -m compileall camrig cam_rig_builder.pyp
-python tools/build_production_release.py --sources-only
+& 'C:\Program Files\Maxon Cinema 4D 2026\resource\modules\python\libs\win64\python.exe' tools/check_project.py
+python tools/build_production_release.py --development --keep-docs
 ```
 
-The `c4d` import is proven only inside Cinema 4D's bundled Python or a live C4D session; system Python compile success is not end-to-end proof.
+A successful compile under bundled Python does not prove a live c4d import. Import and scene behavior must be tested inside the running C4D process. See [1.5 acceptance](ACCEPTANCE_1_5.md).
