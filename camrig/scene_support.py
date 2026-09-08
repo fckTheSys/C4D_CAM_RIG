@@ -29,6 +29,11 @@ def undo_group(doc):
     doc.StartUndo()
     try:
         yield
-    finally:
+    except Exception:
+        doc.EndUndo()
+        doc.DoUndo()
+        c4d.EventAdd()
+        raise
+    else:
         doc.EndUndo()
         c4d.EventAdd()
