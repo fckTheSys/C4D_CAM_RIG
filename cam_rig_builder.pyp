@@ -175,12 +175,14 @@ ID_BTN_SELF_CHECK     = 1023
 ID_BTN_UPGRADE = 1024
 ID_BTN_RESET_PLANE = 1025
 ID_BTN_RESET_AIM = 1026
+ID_BTN_RESET_SPRING = 1027
 _NAV_BUTTONS = [(1030, "rig", "Select Rig"), (1031, "orbit", "Select Orbit"),
                 (1032, "targets", "Select Targets"), (1033, "camera", "Look Through Camera")]
 
 _RESET_BUTTONS = [
     (ID_BTN_RESET_PLANE, "orbit_rig", "Reset Orbit Rig"),
     (ID_BTN_RESET_AIM, "aim", "Reset Aim Offset"),
+    (ID_BTN_RESET_SPRING, "spring", "Reset Spring"),
     (ID_BTN_RESET_ORBIT,    "orbit",    "Reset Orbit"),
     (ID_BTN_RESET_TRANSFORM, "transform", "Reset Transform"),
     (ID_BTN_RESET_CAMERA,   "camera",   "Reset Camera"),

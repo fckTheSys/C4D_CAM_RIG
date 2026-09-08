@@ -1,3 +1,11 @@
+# 1.6.0 — 2026-09-08 (local development, not published)
+
+- Added Follow Spring with Amount, Response and Damping controls.
+- Added a deterministic 120 Hz analytic position solver with reproducible random-frame and subframe evaluation.
+- Added per-tag cache invalidation, supported-source diagnostics and a dedicated Spring_Offset stage before Shake/Drift.
+- Added schema-2 to schema-3 Upgrade, Reset Spring and conservative Break protection.
+- Added pure solver tests and live Cinema 4D smoke coverage for lift/settle behavior.
+
 # 1.5.0 — 2026-09-08 (local development, not published)
 
 - Unlimited signed Orbit degrees and Radius without artificial maximum; independent soft slider ranges.

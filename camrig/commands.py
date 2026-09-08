@@ -83,12 +83,39 @@ def upgrade_rig(doc, rig):
     tags = runtime_tags(circle)
     source = _build_python_tag_source()
     if schema_version(rig) == config.SCHEMA_VERSION:
-        if (len(tags) != 2 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME}
+        if (len(tags) != 3 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME}
                 or any(normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags)):
             raise ValueError("The 1.5 runtime was changed or a stage is missing. Refusing overwrite.")
         return False, "Rig is already up to date."
-    if schema_version(rig) != 0:
+    if schema_version(rig) not in (0, 2):
         raise ValueError("Unsupported rig schema.")
+    if schema_version(rig) == 2:
+        if len(tags) != 2 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME}:
+            raise ValueError("CamRig 1.5 runtime stages are missing or renamed.")
+        expected_150 = Path(__file__).with_name("legacy_150.txt").read_text(encoding="utf-8")
+        if any(normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(expected_150) for t in tags):
+            raise ValueError("Unknown or edited 1.5 runtime. Upgrade would overwrite custom code.")
+        template = load_ud_template()
+        new_groups = [g for g in template["groups"] if g["name"] == "Spring"]
+        early = next(t for t in tags if t.GetName() == "CamRig Runtime 1.5")
+        late = next(t for t in tags if t.GetName() == config.FOCUS_TAG_NAME)
+        with undo_group(doc):
+            for node in (rig, circle, early, late, objs.align, objs.target_expr):
+                add_undo(doc, c4d.UNDOTYPE_CHANGE, node)
+            build_user_data_from_template(rig, {"groups": new_groups}, {})
+            spring_offset = c4d.BaseObject(c4d.Onull)
+            spring_offset.SetName(config.SPRING_OFFSET_NAME)
+            spring_offset.InsertUnder(objs.offset)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            objs.cam.InsertUnder(spring_offset)
+            spring_tag = c4d.BaseTag(c4d.Tpython)
+            spring_tag.SetName(config.SPRING_TAG_NAME)
+            spring_tag[c4d.TPYTHON_CODE] = source
+            circle.InsertTag(spring_tag)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_tag)
+            configure_priorities(early, objs.align, objs.target_expr, late, spring_tag)
+            set_schema(rig)
+        return True, "CamRig 1.5 upgraded to 1.6 with Spring Amount = 0."
     expected = Path(__file__).with_name("legacy_140.txt").read_text(encoding="utf-8")
     if len(tags) != 1 or normalized_source(tags[0][c4d.TPYTHON_CODE]) != normalized_source(expected):
         raise ValueError("Unknown or edited legacy runtime. Upgrade would overwrite custom code.")
@@ -107,7 +134,7 @@ def upgrade_rig(doc, rig):
         raise ValueError("Legacy control schema is incomplete.")
     if any(key in existing for key in config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE]):
         raise ValueError("Legacy rig already has conflicting new controls.")
-    new_groups = [g for g in template["groups"] if g["name"] in ("Orbit Rig", "Aim Offset", "Focus")]
+    new_groups = [g for g in template["groups"] if g["name"] in ("Orbit Rig", "Aim Offset", "Focus", "Spring")]
     position, rotation = circle.GetRelPos(), circle.GetRelRot()
     early = tags[0]
     with undo_group(doc):
@@ -135,7 +162,17 @@ def upgrade_rig(doc, rig):
             late[c4d.TPYTHON_CODE] = source
             circle.InsertTag(late)
             add_undo(doc, c4d.UNDOTYPE_NEWOBJ, late)
-            configure_priorities(early, objs.align, objs.target_expr, late)
+            spring_offset = c4d.BaseObject(c4d.Onull)
+            spring_offset.SetName(config.SPRING_OFFSET_NAME)
+            spring_offset.InsertUnder(objs.offset)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            objs.cam.InsertUnder(spring_offset)
+            spring_tag = c4d.BaseTag(c4d.Tpython)
+            spring_tag.SetName(config.SPRING_TAG_NAME)
+            spring_tag[c4d.TPYTHON_CODE] = source
+            circle.InsertTag(spring_tag)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_tag)
+            configure_priorities(early, objs.align, objs.target_expr, late, spring_tag)
             set_schema(rig)
             # Structural legacy cleanup belongs to this command, not expressions.
             if objs.vib:
@@ -144,7 +181,7 @@ def upgrade_rig(doc, rig):
         except Exception:
             # End the undo group before rolling it back.
             raise
-    return True, "Upgraded to 1.5; existing User Data and tracks preserved."
+    return True, "Upgraded to 1.6; existing User Data and tracks preserved."
 
 def break_preflight(rig):
     tags = runtime_tags(find_circle(rig))
@@ -153,7 +190,7 @@ def break_preflight(rig):
     if not tags or any(normalized_source(t[c4d.TPYTHON_CODE]) not in allowed for t in tags):
         raise ValueError("Break refuses unknown or edited runtime tags.")
     ids = ud_map(rig)
-    keys = config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE, config.UD_FOCUS_OFFSET]
+    keys = config.ORBIT_RIG_KEYS + config.AIM_KEYS + [config.UD_FOCUS_MODE, config.UD_FOCUS_OFFSET] + config.SPRING_KEYS
     for key in keys:
         desc = ids.get(key)
         if desc is not None and (rig.FindCTrack(desc) is not None or rig[desc] != config.UD_DEFAULTS[key]):

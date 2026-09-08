@@ -21,7 +21,7 @@ Full Python mode is intentionally enabled for this development setup. `exec_pyth
 2. In Codex, run `codex mcp list` and `codex mcp get cinema4d`.
 3. Call the Cinema 4D MCP `ping` tool, then `list_entities`.
 4. In a disposable scene, create one test object, inspect it, remove it, and verify Undo in Cinema 4D.
-5. Load CamRig and verify Create Rig, User Data, Python Tag, Reset, and Break.
+5. Load CamRig and verify Create Rig, 37 User Data controls, three ordered Python stages, Reset Spring, Upgrade and conservative Break.
 
 `Unsupported` in CLI auth status does not prove tools unavailable. Test an actual ping first; refresh the task tool inventory only if tools are genuinely missing.
 
@@ -32,4 +32,4 @@ Full Python mode is intentionally enabled for this development setup. `exec_pyth
 python tools/build_production_release.py --development --keep-docs
 ```
 
-A successful compile under bundled Python does not prove a live c4d import. Import and scene behavior must be tested inside the running C4D process. See [1.5 acceptance](ACCEPTANCE_1_5.md).
+A successful compile under bundled Python does not prove a live c4d import. Import and scene behavior must be tested inside the running C4D process. See [1.6 acceptance](ACCEPTANCE_1_6.md) and [Follow Spring](SPRING_1_6.md).

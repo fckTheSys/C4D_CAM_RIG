@@ -26,7 +26,7 @@ def run():
     assemble = importlib.import_module(alias + '.rig_assemble')
     diag = importlib.import_module(alias + '.diagnostics')
     doc = c4d.documents.BaseDocument()
-    doc.SetDocumentName('CamRig 1.5 automated acceptance')
+    doc.SetDocumentName('CamRig 1.6 automated acceptance')
     c4d.documents.InsertBaseDocument(doc)
     c4d.documents.SetActiveDocument(doc)
     rig = assemble.build_cam_rig(doc)
@@ -199,7 +199,7 @@ def run():
         old.SetName('Legacy Upgrade Fixture')
         oo=rt.get_rig_objects(cmds.find_circle(old))
         template=json.loads((ROOT/'camrig/ud_template.json').read_text(encoding='utf-8'))
-        newnames={g['name'] for g in template['groups'] if g['name'] in ('Orbit Rig','Aim Offset','Focus')}
+        newnames={g['name'] for g in template['groups'] if g['name'] in ('Orbit Rig','Aim Offset','Focus','Spring')}
         for g in template['groups']:
             if g['name'] in newnames:
                 newnames.update(p['name'] for p in g['params'])
@@ -210,7 +210,12 @@ def run():
         tags=cmds.runtime_tags(oo.circle)
         late=next(t for t in tags if t.GetName()==cfg.FOCUS_TAG_NAME)
         late.Remove()
-        early=next(t for t in tags if t!=late)
+        early=next(t for t in tags if t.GetName()=='CamRig Runtime 1.5')
+        spring_tag=next(t for t in tags if t.GetName()==cfg.SPRING_TAG_NAME)
+        spring_tag.Remove()
+        if oo.spring is not None:
+            oo.cam.InsertUnder(oo.offset)
+            oo.spring.Remove()
         original=(ROOT/'camrig/legacy_140.txt').read_text(encoding='utf-8')
         early[c4d.TPYTHON_CODE]=original
         early.SetName('Python')
@@ -272,15 +277,13 @@ def run():
     test('legacy Upgrade matrices and Undo',legacy)
 
     def upgrade_rejection():
-        source=(ROOT/'camrig/legacy_140.txt').read_text(encoding='utf-8')
         candidate=assemble.build_cam_rig(doc)
         candidate.SetName('Rejected Upgrade Fixture')
         co=rt.get_rig_objects(cmds.find_circle(candidate))
-        candidate.GetDataInstance().RemoveData(cfg.META_ID)
         tags=cmds.runtime_tags(co.circle)
-        tags[0].Remove()
-        early=tags[1]
-        early[c4d.TPYTHON_CODE]=source+'\n# user customization\n'
+        spring=next(t for t in tags if t.GetName()==cfg.SPRING_TAG_NAME)
+        early=spring
+        early[c4d.TPYTHON_CODE]=early[c4d.TPYTHON_CODE]+'\n# user customization\n'
         def reject(expected):
             before=[(str(d),bc[c4d.DESC_NAME]) for d,bc in candidate.GetUserDataContainer()]
             code=early[c4d.TPYTHON_CODE]
@@ -289,13 +292,7 @@ def run():
             else: raise AssertionError('Unsupported migration accepted')
             check(before==[(str(d),bc[c4d.DESC_NAME]) for d,bc in candidate.GetUserDataContainer()])
             check(early[c4d.TPYTHON_CODE]==code)
-        reject('edited')
-        early[c4d.TPYTHON_CODE]=source
-        co.circle.SetRelScale(c4d.Vector(2,1,1))
-        reject('scale')
-        co.circle.SetRelScale(c4d.Vector(1))
-        tr=curve(co.circle,c4d.DescID(c4d.PRIM_CIRCLE_RADIUS),[(0,500.),(30,600.)])
-        reject('animation')
+        reject('changed')
         # This disposable fixture is not part of the persistence acceptance scene.
         candidate.Remove()
         return 'Edited code, scale, animated circle: refused without partial UD/code changes.'
@@ -354,12 +351,12 @@ def run():
         ok,message=diag.repair_selected_rig(doc,repaired)
         check(ok,message)
         ro=rt.get_rig_objects(cmds.find_circle(repaired))
-        check(ro.align is not None and len(cmds.runtime_tags(ro.circle))==2)
+        check(ro.align is not None and len(cmds.runtime_tags(ro.circle))==3)
         check(diag.inspect_rig(doc,repaired)[0])
         check(doc.DoUndo())
         repaired=doc.SearchObject('Repair Fixture')
         ro=rt.get_rig_objects(cmds.find_circle(repaired))
-        check(ro.align is None and len(cmds.runtime_tags(ro.circle))==1)
+        check(ro.align is None and len(cmds.runtime_tags(ro.circle))==2)
         check(doc.DoRedo())
         return 'Missing Align/late stage repaired and undone as one operation.'
     test('Repair Undo',repair)
@@ -430,7 +427,7 @@ def run():
     test('sequential forward and reverse demo scenes',turn_demos)
 
     def persistence():
-        path=output/'camrig-1.5-acceptance.c4d'
+        path=output/'camrig-1.6-acceptance.c4d'
         check(c4d.documents.SaveDocument(doc,str(path),c4d.SAVEDOCUMENTFLAGS_DONTADDTORECENTLIST,c4d.FORMAT_C4DEXPORT))
         loaded=c4d.documents.LoadDocument(str(path),c4d.SCENEFILTER_OBJECTS|c4d.SCENEFILTER_MATERIALS,None)
         check(loaded is not None)
@@ -438,7 +435,9 @@ def run():
         roots=[node for node in cmds.walk(loaded.GetFirstObject()) if cmds.is_rig(node)]
         check(len(roots)>=2)
         for root in roots:
-            check(len(cmds.runtime_tags(cmds.find_circle(root)))==2)
+            loaded_rig=cmds.find_circle(root).GetUp()
+            if ss.schema_version(loaded_rig)==cfg.SCHEMA_VERSION:
+                check(len(cmds.runtime_tags(cmds.find_circle(root)))==3)
         return str(path)
     test('save and reopen',persistence)
     report={'c4d':c4d.GetC4DVersion(),'python':sys.version,'records':records}

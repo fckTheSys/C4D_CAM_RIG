@@ -37,7 +37,7 @@ def main():
         if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name):
             try: values[node.targets[0].id]=ast.literal_eval(node.value)
             except (ValueError,TypeError): pass
-    assert values['EMBEDDED_RUNTIME_VERSION']==config['PLUGIN_VERSION']=='1.5.0'
+    assert values['EMBEDDED_RUNTIME_VERSION']==config['PLUGIN_VERSION']=='1.6.0'
     assert values['SCHEMA_VERSION']==config['SCHEMA_VERSION']
     for key,value in values.items():
         if key.startswith(('UD_','DEFAULT_')) and key in config:

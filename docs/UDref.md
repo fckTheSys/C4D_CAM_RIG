@@ -1,4 +1,4 @@
-# CamRig 1.5 — User Data reference
+# CamRig 1.6 — User Data reference
 
 Все параметры находятся на корне **Cam_Rig**, не на Main_Camera. Таблица сверена с ud_template.json. Угловые значения — обычные числа в градусах; их числовая семантика не меняется на радианы.
 
@@ -40,6 +40,9 @@ Hard limits ограничивают ввод, slider range — только у�
 | Focus | `focus_mode` | Focus Mode | enum | Manual | Manual / Look Target / Focus Target | — |
 | Focus | `focus_target` | Focus Target | link | пусто | — | — |
 | Focus | `focus_offset` | Focus Offset | real | 0 | −∞ … +∞ | — |
+| Spring | `spring_amount` | Spring Amount | real | 0 | 0 … 100 | 0 … 100 |
+| Spring | `spring_response` | Spring Response | real | 60 | 0 … 100 | 0 … 100 |
+| Spring | `spring_damping` | Spring Damping | real | 65 | 0 … 100 | 0 … 100 |
 
 ## Практическое поведение
 
@@ -51,11 +54,12 @@ Hard limits ограничивают ввод, slider range — только у�
 - Автофокус = глубина точки вдоль оси итоговой FX-камеры + Focus Offset, минимум 1. DOF/диафрагма не включаются.
 - Reset All сохраняет все ссылки и трансформацию корня. Ключи не удаляет: следующий animation evaluation снова применит F-Curve.
 - Прямые циклические ссылки игнорируются runtime; Inspector объясняет причину. Сама пользовательская ссылка не стирается.
+- Spring Amount смешивает обычную и инерционную позицию; Response задаёт 0.5–5 Hz, Damping — коэффициент 0.2–1.0. Spring действует до Target и не пружинит Shake/Drift.
 
 ## Не реализовано
 
-Spline Position, Speed Offset, движение по произвольному сплайну, spherical orbit, presets, inertia и управление кругом gizmo не являются контролами 1.5.
+Spline Position, Speed Offset, движение по произвольному сплайну, spherical orbit, presets, rotational inertia и управление кругом gizmo не являются контролами 1.6.
 
 Show/Hide Rig HUD пока отсутствуют. Нативный HUD можно создать вручную: выделить нужные User Data в Attribute Manager → контекстное меню Add to HUD. Рекомендуемый набор: Orbit, Radius, Height, Plane Tilt, Focal Length. Это исходные UD, не копии; работу через HUD ещё нужно принять вручную. [Ограничение Python SDK](https://developers.maxon.net/forum/topic/14678/python-script-is-add-to-hud-possible-to-add-to-my-python-script).
 
-[Upgrade](UPGRADE_1_5.md) · [Проверки](ACCEPTANCE_1_5.md)
+[Follow Spring](SPRING_1_6.md) · [Upgrade](UPGRADE_1_5.md) · [Проверки](ACCEPTANCE_1_6.md)

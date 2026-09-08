@@ -1,4 +1,4 @@
-"""Read-only diagnostics and explicit, undoable repair of known schema-2 rigs."""
+"""Read-only diagnostics and explicit, undoable repair of known CamRig rigs."""
 import c4d
 from . import config, tag_embedded
 from .commands import choose_rig, find_circle, ud_map, runtime_tags, normalized_source
@@ -23,12 +23,27 @@ def inspect_rig(doc, rig=None):
         if getattr(objs, key) is None:
             lines.append("MISSING: " + key)
             ok = False
+    if schema_version(rig) == config.SCHEMA_VERSION:
+        if objs.spring is None:
+            lines.append("MISSING: Spring_Offset (Spring is bypassed until Repair)")
+            ok = False
+        else:
+            amount = rig[ud_map(rig)[config.UD_SPRING_AMOUNT]] if config.UD_SPRING_AMOUNT in ud_map(rig) else 0.0
+            lines.append("Spring: " + ("active" if float(amount) != 0.0 else "bypassed") + " (Amount=" + str(amount) + ")")
+            try:
+                from .spring import source_supported
+                if not source_supported(objs):
+                    lines.append("WARNING: Spring source uses expressions, tags or animated scale; Spring is bypassed.")
+                    ok = False
+            except Exception:
+                lines.append("WARNING: Spring source support could not be inspected.")
+                ok = False
     if schema_version(rig) == 0:
         lines.append("Legacy rig: use Upgrade Selected Rig; no automatic scene changes.")
     source = normalized_source(_build_python_tag_source())
     tags = runtime_tags(objs.circle)
     if schema_version(rig) == config.SCHEMA_VERSION:
-        if len(tags) != 2 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME}:
+        if len(tags) != 3 or {t.GetName() for t in tags} != {"CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME}:
             lines.append("WARNING: runtime stages missing or renamed.")
             ok = False
         if any(normalized_source(t[c4d.TPYTHON_CODE]) != source for t in tags):
@@ -58,7 +73,7 @@ def repair_selected_rig(doc, rig=None):
     if objs is None:
         return False, "Incomplete hierarchy; cannot safely reconstruct it."
     source = _build_python_tag_source()
-    known_names = ("CamRig Runtime 1.5", config.FOCUS_TAG_NAME)
+    known_names = ("CamRig Runtime 1.5", config.FOCUS_TAG_NAME, config.SPRING_TAG_NAME)
     tags = runtime_tags(circle)
     if any(t.GetName() not in known_names or normalized_source(t[c4d.TPYTHON_CODE]) != normalized_source(source) for t in tags):
         return False, "Unknown or edited Python tag; refusing overwrite."
@@ -104,7 +119,14 @@ def repair_selected_rig(doc, rig=None):
             else:
                 add_undo(doc, c4d.UNDOTYPE_CHANGE, tag)
             stages[name] = tag
-        configure_priorities(stages[known_names[0]], align, target, stages[known_names[1]])
+        if objs.spring is None:
+            spring_offset = c4d.BaseObject(c4d.Onull)
+            spring_offset.SetName(config.SPRING_OFFSET_NAME)
+            spring_offset.InsertUnder(objs.offset)
+            add_undo(doc, c4d.UNDOTYPE_NEWOBJ, spring_offset)
+            objs.cam.InsertUnder(spring_offset)
+            changes.append(config.SPRING_OFFSET_NAME)
+        configure_priorities(stages[known_names[0]], align, target, stages[known_names[1]], stages[known_names[2]])
         if objs.vib:
             add_undo(doc, c4d.UNDOTYPE_DELETEOBJ, objs.vib)
             objs.vib.Remove()

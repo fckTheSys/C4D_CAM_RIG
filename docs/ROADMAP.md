@@ -17,8 +17,8 @@
 
 ## Spring camera
 
-- **Идея:** пружинная физика к целевым orbit/offset/target вместо мгновенного следования.
-- **Реализация (черновик):** состояние pos/vel, stiffness/damping в UD.
+- Реализовано в CamRig 1.6 как Follow Spring: Amount / Response / Damping, аналитический solver 120 Hz и воспроизводимый cache.
+- Вне версии остаются rotational inertia, раздельные оси, пресеты и lookahead.
 
 ---
 
