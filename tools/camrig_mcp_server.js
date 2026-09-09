@@ -36,8 +36,10 @@ const toolNames=new Set(TOOLS.map(([name])=>name));
 async function backend(){
   if(client) return client;
   const command=process.platform === "win32" ? "npx.cmd" : "npx";
-  client=new Client({name:"camrig-agent",version:"1.0.0"},{capabilities:{}});
-  await client.connect(new StdioClientTransport({command,args:["--yes","@kumoproductions/mcp-cinema4d@0.3.1"],env:process.env}));
+  const candidate=new Client({name:"camrig-agent",version:"1.0.0"},{capabilities:{}});
+  try { await candidate.connect(new StdioClientTransport({command,args:["--yes","@kumoproductions/mcp-cinema4d@0.3.1"],env:process.env})); }
+  catch(error) { await candidate.close().catch(()=>{}); throw error; }
+  client=candidate;
   return client;
 }
 async function call(action,args){
@@ -61,4 +63,15 @@ server.setRequestHandler(CallToolRequestSchema,async(req)=>{
   const task=queue.then(()=>call(action,req.params.arguments||{})); queue=task.catch(()=>{});
   try{return await task;}catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,scene:{},rig:null,changes:[],state:{},warnings:[],errors:[{code:"C4D_EXECUTION_ERROR",message:String(e.message||e)}]})}]};}
 });
-server.connect(new StdioServerTransport()).catch(e=>{console.error(e);process.exit(1);});
+let closing=false;
+async function shutdown(){
+  if(closing) return;
+  closing=true;
+  await queue.catch(()=>{});
+  if(client) await client.close().catch(()=>{});
+  await server.close().catch(()=>{});
+}
+process.stdin.on('end',shutdown);
+process.on('SIGTERM',shutdown);
+process.on('SIGINT',shutdown);
+server.connect(new StdioServerTransport()).catch(e=>{console.error(e);process.exitCode=1;shutdown();});

@@ -49,7 +49,7 @@ def validate_controls(controls):
             continue
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
             raise ValueError("INVALID_CONTROL: %s must be a finite number" % key)
-        if key == "focus_mode" and int(value) != value:
+        if key == "focus_mode" and not isinstance(value, int):
             raise ValueError("INVALID_CONTROL: focus_mode must be 0, 1, or 2")
         _, low, high = CONTROL_SPECS[key]
         if low is not None and value < low or high is not None and value > high:

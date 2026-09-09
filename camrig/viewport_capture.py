@@ -4,6 +4,7 @@ import c4d
 from .agent_state import resolve_rig
 from .commands import find_circle
 from .rig_objects import get_rig_objects
+from .agent_time import time_at
 
 def capture(doc, rig_ref, path, frame=None, width=1280, height=720, camera="fx", confirm=False):
     if not isinstance(width,int) or not isinstance(height,int) or not 1 <= width <= 8192 or not 1 <= height <= 8192:
@@ -19,10 +20,7 @@ def capture(doc, rig_ref, path, frame=None, width=1280, height=720, camera="fx",
     original_time=doc.GetTime(); old_active=active.GetSceneCamera(doc); old_render=render.GetSceneCamera(doc)
     selected=objs.fx if camera=="fx" else old_active if camera=="active" else None
     if selected is None: raise ValueError("INVALID_CAPTURE: camera must be fx or active")
-    if frame is not None:
-        doc.SetTime(c4d.BaseTime(float(frame),doc.GetFps()))
-        doc.ExecutePasses(None,True,True,True,c4d.BUILDFLAGS_INTERNALRENDERER)
-    active.SetSceneCamera(selected); render.SetSceneCamera(selected)
+    requested_time=time_at(frame,doc.GetFps()) if frame is not None else original_time
     settings=c4d.BaseContainer(); settings[c4d.RDATA_XRES]=int(width); settings[c4d.RDATA_YRES]=int(height)
     settings[c4d.RDATA_FILMASPECT]=float(width)/float(height); settings[c4d.RDATA_PIXELASPECT]=1.0
     settings[c4d.RDATA_RENDERENGINE]=c4d.RDATA_RENDERENGINE_PREVIEWHARDWARE
@@ -31,6 +29,9 @@ def capture(doc, rig_ref, path, frame=None, width=1280, height=720, camera="fx",
     bmp=c4d.bitmaps.BaseBitmap(); result=bmp.Init(int(width),int(height),24)
     if result!=c4d.IMAGERESULT_OK: raise RuntimeError("Could not allocate capture bitmap")
     try:
+        doc.SetTime(requested_time)
+        doc.ExecutePasses(None,True,True,True,c4d.BUILDFLAGS_INTERNALRENDERER)
+        active.SetSceneCamera(selected); render.SetSceneCamera(selected)
         result=c4d.documents.RenderDocument(doc,settings,bmp,c4d.RENDERFLAGS_EXTERNAL|c4d.RENDERFLAGS_OCIO_BAKE_RENDERING)
         if result!=c4d.RENDERRESULT_OK: raise RuntimeError("Viewport render failed: %s" % result)
         target.parent.mkdir(parents=True,exist_ok=True)

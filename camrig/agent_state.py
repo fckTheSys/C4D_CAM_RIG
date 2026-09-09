@@ -1,5 +1,7 @@
 """JSON-safe scene and rig state for the CamRig Agent facade."""
 import c4d
+import ast
+from urllib.parse import quote
 from . import config
 from .commands import walk, is_rig, find_circle, ud_map
 from .rig_objects import get_rig_objects
@@ -9,8 +11,30 @@ from .agent_schema import CONTROL_SPECS, LINK_KEYS
 def _path(obj):
     parts=[]
     while obj is not None:
-        parts.append(obj.GetName()); obj=obj.GetUp()
+        parent=obj.GetUp()
+        first=parent.GetDown() if parent else obj.GetDocument().GetFirstObject()
+        matches=[]
+        while first is not None:
+            if first.GetName()==obj.GetName(): matches.append(first)
+            first=first.GetNext()
+        segment=quote(obj.GetName(),safe=' _-.')
+        if len(matches)>1: segment+='[%d]' % (next(i for i,node in enumerate(matches) if node==obj)+1)
+        parts.append(segment); obj=parent
     return "/" + "/".join(reversed(parts))
+
+def runtime_version(rig):
+    circle=find_circle(rig)
+    versions=[]
+    for tag in circle.GetTags() if circle else []:
+        if not tag.CheckType(c4d.Tpython): continue
+        version=None
+        try:
+            for node in ast.parse(tag[c4d.TPYTHON_CODE]).body:
+                if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='EMBEDDED_RUNTIME_VERSION' for t in node.targets):
+                    version=ast.literal_eval(node.value)
+        except (ValueError,SyntaxError,TypeError): pass
+        versions.append(version)
+    return versions[0] if versions and isinstance(versions[0],str) and all(v==versions[0] for v in versions) else None
 
 def _priority_value(priority):
     try: return int(priority.GetPriorityValue(c4d.PRIORITYVALUE_PRIORITY))
@@ -56,7 +80,7 @@ def _tag_state(node):
 
 def rig_state(doc, rig, include=None):
     include=set(include or ["controls","targets","camera","spring","diagnostics"]); ids=ud_map(rig)
-    state={"path":_path(rig),"schema":schema_version(rig),"runtime":config.PLUGIN_VERSION}
+    state={"path":_path(rig),"schema":schema_version(rig),"runtime":runtime_version(rig)}
     if "controls" in include:
         state["controls"]={k:_json(rig[ids[name]]) for k,(name,_,_) in CONTROL_SPECS.items() if name in ids}
     if "targets" in include:
@@ -67,7 +91,7 @@ def rig_state(doc, rig, include=None):
     return state
 
 def scene_state(doc):
-    current=doc.GetTime().GetFrame(doc.GetFps())
+    current=doc.GetTime().Get()*doc.GetFps()
     return {"document":doc.GetDocumentName(),"path":doc.GetDocumentPath(),"fps":doc.GetFps(),
             "current_frame":current,"min_frame":doc.GetMinTime().GetFrame(doc.GetFps()),
             "max_frame":doc.GetMaxTime().GetFrame(doc.GetFps()),"rigs":[rig_state(doc,r,["controls","diagnostics"]) for r in rigs(doc)]}
