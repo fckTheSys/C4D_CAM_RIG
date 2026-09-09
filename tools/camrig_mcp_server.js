@@ -6,6 +6,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { spawn } from "node:child_process";
 
 const TOOLS = [
   ["camrig_scene_state","Read active scene and all CamRigs",{}],
@@ -31,16 +32,35 @@ const TOOLS = [
   ["camrig_redo","Redo the last Cinema 4D operation",{}],
 ];
 let client;
+let backendTransport;
 let queue=Promise.resolve();
 const toolNames=new Set(TOOLS.map(([name])=>name));
 async function backend(){
   if(client) return client;
   const command=process.platform === "win32" ? "npx.cmd" : "npx";
   const candidate=new Client({name:"camrig-agent",version:"1.0.0"},{capabilities:{}});
-  try { await candidate.connect(new StdioClientTransport({command,args:["--yes","@kumoproductions/mcp-cinema4d@0.3.1"],env:process.env})); }
-  catch(error) { await candidate.close().catch(()=>{}); throw error; }
+  const transport=new StdioClientTransport({command,args:["--yes","@kumoproductions/mcp-cinema4d@0.3.1"],env:process.env});
+  try { await candidate.connect(transport); }
+  catch(error) { await candidate.close().catch(()=>{}); await transport.close().catch(()=>{}); throw error; }
   client=candidate;
+  backendTransport=transport;
   return client;
+}
+async function stopProcessTree(pid){
+  if(process.platform!=="win32" || !pid) return;
+  await new Promise(resolve=>{
+    const child=spawn("taskkill.exe",["/PID",String(pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});
+    child.once("error",resolve); child.once("close",resolve);
+  });
+}
+async function closeBackend(){
+  const transport=backendTransport, pid=transport?.pid;
+  backendTransport=undefined;
+  const active=client; client=undefined;
+  await active?.close().catch(()=>{});
+  await transport?.close().catch(()=>{});
+  // npx.cmd can orphan its Node grandchild on Windows; terminate only our own tree.
+  await stopProcessTree(pid);
 }
 async function call(action,args){
   const c=await backend();
@@ -68,7 +88,7 @@ async function shutdown(){
   if(closing) return;
   closing=true;
   await queue.catch(()=>{});
-  if(client) await client.close().catch(()=>{});
+  await closeBackend();
   await server.close().catch(()=>{});
 }
 process.stdin.on('end',shutdown);

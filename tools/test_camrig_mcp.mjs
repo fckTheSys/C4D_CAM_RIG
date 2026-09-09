@@ -1,9 +1,10 @@
-/* Public stdio MCP contract smoke. Creates no scene objects and restores mutations. */
+/* Public stdio MCP contract smoke. Uses a disposable QA document and restores the source. */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const output=process.env.CAMRIG_TEST_OUTPUT;
@@ -47,6 +48,15 @@ async function rawPython(bridge, code) {
   if(index<0) throw new Error("harness result missing: "+(envelope.stdout||text));
   return JSON.parse(envelope.stdout.slice(index+marker.length).trim());
 }
+async function closeMcpClient(mcpClient, mcpTransport) {
+  const pid=mcpTransport?.pid;
+  await mcpClient?.close().catch(()=>{});
+  await mcpTransport?.close().catch(()=>{});
+  if(process.platform==="win32" && pid) await new Promise(resolve=>{
+    const child=spawn("taskkill.exe",["/PID",String(pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});
+    child.once("error",resolve); child.once("close",resolve);
+  });
+}
 let undoCount=0;
 let initialFrame;
 let connected=false;
@@ -54,11 +64,12 @@ let rawConnected=false;
 let setup;
 let failure;
 let successReport;
+let lifecycleReport;
 try {
   await raw.connect(rawTransport);
   rawConnected=true;
   setup=await rawPython(raw,"import base64,json,runpy\ndata=json.loads(base64.b64decode("+JSON.stringify(Buffer.from(JSON.stringify({harness:harnessPath,fixture:path.join(here,"..","tests","build_agent_qa.py"),snapshot:snapshotPath,temporary:temporaryDocument,token:harnessToken}),"utf8").toString("base64"))+").decode('utf-8'))\nharness=runpy.run_path(data['harness'])\nresult=harness['prepare'](data['snapshot'],data['temporary'],data['fixture'],data['token'])\nprint('"+marker+"'+json.dumps(result))");
-  await raw.close();
+  await closeMcpClient(raw,rawTransport);
   rawConnected=false;
   await client.connect(transport);
   connected=true;
@@ -104,9 +115,10 @@ try {
     catch(error) { cleanupErrors.push(error); }
   }
   undoCount=0;
+  try { await closeMcpClient(client,transport); } catch(error) { cleanupErrors.push(error); }
   try { await transport.close(); } catch(error) { cleanupErrors.push(error); }
   if(rawConnected) {
-    try { await raw.close(); } catch(error) { cleanupErrors.push(error); }
+    try { await closeMcpClient(raw,rawTransport); } catch(error) { cleanupErrors.push(error); }
   }
   if(setup) {
     const cleanupRaw=new Client({name:"camrig-agent-contract-cleanup",version:"1.0.0"},{capabilities:{}});
@@ -114,9 +126,11 @@ try {
     try {
       await cleanupRaw.connect(cleanupTransport);
       const restored=await rawPython(cleanupRaw,"import base64,json,runpy\ndata=json.loads(base64.b64decode("+JSON.stringify(Buffer.from(JSON.stringify({harness:harnessPath,snapshot:setup.snapshot,temporary:setup.temporary,token:setup.token,before:setup.before}),"utf8").toString("base64"))+").decode('utf-8'))\nharness=runpy.run_path(data['harness'])\nresult=harness['cleanup'](data['snapshot'],data['temporary'],data['token'],data['before'])\nprint('"+marker+"'+json.dumps(result))");
+      lifecycleReport=restored;
       if(!restored.restored || !restored.fingerprint_match) throw new Error("original document was not restored");
+      if(restored.status!=="PASS") throw new Error("document required emergency snapshot recovery; inspect retained snapshot: "+restored.snapshot);
     } catch(error) { cleanupErrors.push(error); }
-    finally { await cleanupRaw.close().catch(error=>cleanupErrors.push(error)); }
+    finally { await closeMcpClient(cleanupRaw,cleanupTransport).catch(error=>cleanupErrors.push(error)); }
   }
   if(cleanupErrors.length) {
     const cleanupFailure=new Error("MCP cleanup failed: "+cleanupErrors.map(error=>error.message).join("; "));
@@ -124,4 +138,9 @@ try {
   }
 }
 if(failure) throw failure;
+successReport.lifecycle=lifecycleReport;
+fs.writeFileSync(path.join(output,"mcp_contract_report_"+harnessToken+".json"),JSON.stringify(successReport,null,2));
 console.log(JSON.stringify(successReport));
+// All transports have been explicitly closed above. Exit so a leaked SDK timer
+// cannot make a passing contract process look like a live MCP service.
+process.exit(0);

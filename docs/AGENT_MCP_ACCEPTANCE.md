@@ -40,15 +40,27 @@ again. The live save/reopen regression sampled frames 0, 10, 15, 30, 60.5 and
 100: camera/FX matrices and key time/value/interpolation matched before and
 after reopening.
 
-The current script creates its own uniquely named QA document through the
+The contract script creates its own uniquely named QA document through the
 trusted local bridge, runs the public `camrig-agent` stdio tools against it and
-then restores the original scene from an isolated temporary `.c4d` snapshot.
-It compares every returned control and target plus sampled matrices at frames
-0, 30.25 and 60.5 before and after Undo. Cleanup errors fail the run.
+then restores the exact source document through a session registry. Before QA
+starts it writes and reopens a verified `.c4d` clone. The clone is an emergency
+recovery path, not the normal success path, and remains in the ignored artifact
+directory for review. A source restored from a clone is returned as
+`status: "RECOVERED"` and makes the public contract command fail instead of
+printing an ordinary PASS.
 
-The document lifecycle was tested with no objects, one material, FPS 47, frame
-13 and a 1234×567 render size. Those values survived the complete stdio run and
-the snapshot was removed only after the restored document fingerprint matched.
+`tests/c4d_document_harness_regression.py` exercised a populated source scene:
+object transforms, User Data link, animated User Data track, material colour,
+selection, FPS 47, frame 13 and a 1234×567 render size. It passed normal
+identity restore, duplicate document names, injected setup failure, injected
+cleanup failure followed by retry, and an intentionally forced snapshot
+recovery. The forced recovery was explicitly reported as `RECOVERED`.
+
+The full public stdio run then passed from a saved disposable source fixture:
+21 published tools; controls/targets/samples restored by Undo; FX PNG and
+saved scene non-empty; lifecycle `source: "original"`, `status: "PASS"`.
+It compares returned controls and targets plus sampled matrices at frames 0,
+30.25 and 60.5 before and after Undo. Cleanup errors fail the run.
 
 Visual artefacts are intentionally ignored under `tests/artifacts/`:
 
@@ -72,7 +84,7 @@ and solver tests.
   returned an error and restored both Height values to 111 and 222. This proves
   those values rolled back, not a complete matrix/link/track snapshot comparison.
   These are live host-API checks, not the complete stdio MCP acceptance matrix.
-- Current static checks pass under bundled Python 3.11.4: 33 files compile,
+- Current static checks pass under bundled Python 3.11.4: 36 files compile,
   37 template parameters and local Markdown links validate; 10 unit tests pass.
   Unit preflight tests exercise extracted host functions without simulating C4D.
 - Root transform validation now rejects non-finite values, booleans and unknown
@@ -96,8 +108,9 @@ and solver tests.
 ## Re-run
 
 Start Cinema 4D with `C4D_MCP_ENABLE_EXEC_PYTHON=1` and the configured token,
-then run from the repository root. The contract harness creates and removes its
-own temporary QA document:
+then run from the repository root. Use a saved disposable source fixture for
+an ordinary PASS. The contract harness creates/removes its own temporary QA
+document; a verified recovery snapshot is retained under the output directory:
 
 ```powershell
 $env:C4D_MCP_ENABLE_EXEC_PYTHON='1'
