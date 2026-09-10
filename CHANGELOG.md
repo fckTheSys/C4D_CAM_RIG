@@ -8,6 +8,14 @@
 - Added per-tag cache invalidation, supported-source diagnostics and a dedicated Spring_Offset stage before Shake/Drift.
 - Added schema-2 to schema-3 Upgrade, Reset Spring and conservative Break protection.
 - Added pure solver tests and live Cinema 4D smoke coverage for lift/settle behavior.
+- Hardened Agent MCP acceptance lifecycle: the source document is tracked by
+  exact interpreter identity, the on-disk clone is reopened and fingerprinted
+  before QA, and snapshot recovery is reported separately from ordinary PASS.
+- Added live document lifecycle regression coverage for duplicate names,
+  setup/cleanup fault injection, exact transforms, User Data links/tracks,
+  materials, selection and render settings.
+- Fixed Windows stdio test shutdown so the proxy and its pinned Cinema 4D MCP
+  child do not remain as orphan processes after a successful run.
 
 # 1.5.0 — 2026-09-08 (local development, not published)
 
