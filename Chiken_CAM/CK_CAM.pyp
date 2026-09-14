@@ -11,7 +11,7 @@ import c4d
 from c4d import plugins
 
 
-PLUGIN_ID = 10699110
+PLUGIN_ID = 10699111
 PLUGIN_NAME = "Chiken_CAM (CK_CAM)"
 PLUGIN_HELP = "Create the CK_CAM path camera rig"
 VERSION = "0.1.0"

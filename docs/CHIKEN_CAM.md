@@ -29,7 +29,8 @@ when the source is unsupported.
 The installed folder is `%APPDATA%\Maxon\Maxon Cinema 4D 2026_1ABCDC12\plugins\Chiken_CAM\`.
 It contains `CK_CAM.pyp` and `prototypes/simple_camera/`. Cinema 4D loads Python
 command plugins on startup, so restart C4D after installation. This ID is private
-development-only; request a PluginCafe ID before distributing the plugin.
+development-only (`10699111`); request a PluginCafe ID before distributing the
+plugin.
 
 ## Validation
 
