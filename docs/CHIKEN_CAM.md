@@ -1,5 +1,7 @@
 # Chiken_CAM / CK_CAM 0.1.0
 
+**[Параметры для POV: что означает каждый регулятор, меньше/больше и примеры](../prototypes/simple_camera/PARAMETERS_RU.md)**
+
 `Chiken_CAM (CK_CAM)` is a separate private Cinema 4D 2026 command plugin. It
 creates the new path-camera rig and never migrates or changes legacy CamRig rigs.
 

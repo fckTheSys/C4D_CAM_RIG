@@ -1,5 +1,8 @@
 # Simple Camera — private working candidate
 
+[Понятный справочник параметров CK_CAM для POV](PARAMETERS_RU.md): назначение,
+значения по умолчанию, эффект увеличения/уменьшения и примеры анимации.
+
 Independent from legacy CamRig. Core live checks pass; visual user acceptance and
 Redshift motion-blur acceptance remain open. No plugin installation is required.
 

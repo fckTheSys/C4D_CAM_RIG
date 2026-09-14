@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 FILES = ("builder.py", "runtime.py", "motion_math.py", "path_math.py", "curve_math.py",
-         "create_simple_camera.py", "select_camera.py", "update_selected_rig.py", "README.md")
+         "create_simple_camera.py", "select_camera.py", "update_selected_rig.py", "README.md", "PARAMETERS_RU.md")
 
 
 def main() -> int:

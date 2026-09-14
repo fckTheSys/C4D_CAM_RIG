@@ -6,6 +6,11 @@
 
 - [Установка](INSTALL.md)
 - [Chiken_CAM / CK_CAM: новая path-camera система](docs/CHIKEN_CAM.md)
+- [CamRig 2: новая постановочная камера — архитектура и прототип](docs/CAMRIG_2.md)
+- [Cine Orbit / Trajectory / Free: отдельные сборки без переключателя режима](prototypes/cine_variants/README.md)
+- [Cine Camera: плагин с меню создания, пакет и проверки](docs/CINE_CAM_PACKAGE.md)
+- [Camera Rigs: режимы, параметры и кнопки общей панели](docs/CAMERA_RIGS_GUIDE_RU.md)
+- [Универсальный CamRig 2 P3: сохранённый legacy](prototypes/cine_camera/LEGACY.md)
 - [Таблица всех 37 параметров](docs/UDref.md)
 - [Архитектура и поведение](docs/SUMMARY.md)
 - [Upgrade старых ригов](docs/UPGRADE_1_5.md)
