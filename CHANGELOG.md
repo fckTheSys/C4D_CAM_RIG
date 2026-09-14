@@ -1,3 +1,10 @@
+# Chiken_CAM / CK_CAM 0.1.0 — 2026-09-15 (private development)
+
+- Added the independent `Chiken_CAM (CK_CAM)` Cinema 4D command plugin.
+- Kept legacy CamRig unchanged; CK_CAM creates only the new path-camera rig.
+- Added immediate preview for keyed User Data and split geometry/motion caches.
+- Documented bounded validation and private installation layout.
+
 # 1.6.0 — 2026-09-08 (local development, not published)
 
 - Review corrections: moving-target forcing term, subframe endpoint/time precision, exact native circle sampling, input cache signature, metadata stage roles and complete 1.5 runtime replacement during Upgrade.

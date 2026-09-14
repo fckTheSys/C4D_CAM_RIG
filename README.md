@@ -5,6 +5,7 @@
 Управление находится в User Data корня Cam_Rig. В 1.5 добавлены свободные обороты Orbit, высота/центр/HPB круга, независимый Orbit Center, Aim Offset и независимый автофокус. В 1.6 добавлен Follow Spring: позиционная инерция и затухающие колебания с воспроизводимым расчётом. Сцена хранит полный runtime в трёх Python Tags.
 
 - [Установка](INSTALL.md)
+- [Chiken_CAM / CK_CAM: новая path-camera система](docs/CHIKEN_CAM.md)
 - [Таблица всех 37 параметров](docs/UDref.md)
 - [Архитектура и поведение](docs/SUMMARY.md)
 - [Upgrade старых ригов](docs/UPGRADE_1_5.md)
