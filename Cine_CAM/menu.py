@@ -5,7 +5,7 @@ from pathlib import Path
 import c4d
 
 PLUGIN_ID = 10699230
-VERSION = '0.5.3'
+VERSION = '0.5.4'
 CK_ROLE_ID = 10699101
 ROLE_ID = 10699220
 
@@ -35,6 +35,8 @@ def create(document, mode):
 def inspect_ck(root):
     objects, stack = {}, [root]
     parents = {2:1,3:1,4:1,5:4,6:5,7:6,8:7,9:8}
+    native = {bc[c4d.DESC_NAME]:desc for desc,bc in root.GetUserDataContainer()}
+    if 'Aim Mode' in native: parents[10]=5
     while stack:
         node = stack.pop()
         role = node.GetDataInstance().GetInt32(CK_ROLE_ID)
@@ -43,17 +45,18 @@ def inspect_ck(root):
                 raise ValueError('Duplicate CK_CAM role')
             objects[role] = node
         stack.extend(node.GetChildren())
-    if set(objects) not in (set(range(1,10)),set(range(1,10))-{2}) or any(objects[r].GetUp()!=objects[p] for r,p in parents.items() if r in objects):
+    expected=set(parents)|{1}
+    if set(objects) not in (expected,expected-{2}) or any(objects[r].GetUp()!=objects[p] for r,p in parents.items() if r in objects):
         raise ValueError('Incomplete CK_CAM hierarchy')
     native = {bc[c4d.DESC_NAME]:desc for desc,bc in root.GetUserDataContainer()}
-    names = {'camera':'Camera','target':'Target','path':'Path','status':'Status',
+    names = {'camera':'Camera','target':'Target','path':'Path','status':'Status','aim_mode':'Aim Mode' if 'Aim Mode' in native else 'Use Target',
         'offset_x':'Body X','offset_y':'Body Y','offset_z':'Body Z',
         'pan':'Pan','tilt':'Tilt','roll':'Roll','walk_strength':'Walk Strength',
         'shake_strength':'Shake Strength','drift_strength':'Drift Strength'}
     if any(name not in native for name in names.values()):
         raise ValueError('Missing CK_CAM controls')
     ids = {key:native[name] for key,name in names.items()}
-    if any(root[ids[key]] != objects[role] for key,role in (('camera',9),('target',3))):
+    if root[ids['camera']] != objects[9]:
         raise ValueError('CK_CAM links changed')
     if len([t for t in root.GetTags() if t.GetType()==c4d.Tpython]) != 2:
         raise ValueError('Expected two embedded CK_CAM stages')
@@ -92,6 +95,9 @@ def inspect(root):
             objects[role] = node
         stack.extend(node.GetChildren())
     expected = set(parents) | {1}
+    if 14 in objects:
+        parents[14]=12
+        expected.add(14)
     if set(objects) != expected and not (mode == 1 and set(objects) == expected - {10}):
         raise ValueError('Incomplete rig hierarchy')
     if any(objects[role].GetUp()!=objects[parent] for role,parent in parents.items() if role in objects):
@@ -122,7 +128,8 @@ def navigate(document, root, destination):
     elif destination == 'camera':
         node = objects[9 if mode == 3 else 8]
     elif destination == 'target':
-        node = root[ids['target']] or objects[3]
+        aim_mode=int(root[ids['aim_mode']])
+        node = root if aim_mode==0 else objects.get(10 if mode==3 else 14) if aim_mode==2 else root[ids['target']]
     elif destination == 'motion':
         role = (2,10,11,2)[mode]
         node = root[ids[('center','path','free','path')[mode]]]
@@ -230,6 +237,8 @@ class CineMenu(c4d.gui.GeDialog):
                     'Lens and focus: Select Camera. Effects: Strength=0 disables computation.\n\n'
                     'Reset Framing clears offsets and pan/tilt/roll. Disable Effects sets the three strengths to zero.\n'
                     'Both refuse controls with animation keys; neither deletes keys.\n\n'
+                    'Aim mode: Manual / World Target / Local Target. Target button selects the active look controller. '
+                    'Move/key Local Target XYZ; farther Z gives gentler aiming. Pan/Tilt/Roll add offsets. '
                     'Saved rigs need no Camera Rigs plugin. CK_CAM requires Redshift. See README.md in the plugin folder.')
                 return True
             root = selected(document)

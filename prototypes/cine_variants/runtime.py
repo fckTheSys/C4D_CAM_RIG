@@ -7,7 +7,7 @@ import math
 import c4d
 
 ROLE_ID = 10699220  # Private object metadata, not a registered plugin command.
-PARENTS = {3: 1, 5: 1, 9: 5, 12: 9, 6: 12, 7: 6, 13: 7, 8: 13}
+PARENTS = {3: 1, 5: 1, 9: 5, 12: 9, 14: 12, 6: 12, 7: 6, 13: 7, 8: 13}
 PARENTS.update(({2: 1, 4: 1}, {10: 1}, {11: 1})[FIXED_MODE])
 
 
@@ -76,7 +76,7 @@ def execute(tag):
     if align is None or target is None:
         raise ValueError('Required Align or Target tag is missing')
     driven = (circle, motion, objects[9], objects[12], aim, frame, objects[13], camera)
-    look = source_link(root, read(root, 'target'), objects[3], driven)
+    look = look_source(root, read(root,'aim_mode'), read(root,'target'), objects[14], aim)
     rotation = c4d.Vector(*(math.radians(number(root, name)) for name in ('pan', 'tilt', 'roll')))
     offset = c4d.Vector(*(number(root, 'offset_' + axis) for axis in ('x', 'y', 'z')))
     mode = read(root, 'movement_mode')
@@ -118,7 +118,7 @@ def execute(tag):
         align[c4d.ALIGNTOSPLINETAG_POSITION] = progress
     align[c4d.ALIGNTOSPLINETAG_TANGENTIAL] = False
     objects[9].SetRelPos(offset)
-    target[c4d.TARGETEXPRESSIONTAG_LINK] = look if read(root, 'aim_mode') == 1 else None
+    target[c4d.TARGETEXPRESSIONTAG_LINK] = look
     # Clear previous target orientation so Manual is independent of seek history.
     aim.SetRelRot(c4d.Vector())
     frame.SetRelRot(rotation)
@@ -158,6 +158,10 @@ def main():
         message = ('Orbit', 'Trajectory', 'Free')[read(root, 'movement_mode')] + ' prototype: ready'
     except Exception as error:
         message = 'Stopped: ' + str(error)
+        try:
+            resolve(root)[6].GetTag(c4d.Ttargetexpression)[c4d.TARGETEXPRESSIONTAG_LINK] = None
+        except Exception:
+            pass
         if op.GetDataInstance().GetInt32(ROLE_ID) != 2:
             # Do not continue animating the previously linked path after an invalid edit.
             try:

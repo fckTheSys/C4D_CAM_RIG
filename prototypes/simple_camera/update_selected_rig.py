@@ -65,6 +65,8 @@ def main(document=None):
     if document is None:
         raise RuntimeError('Open a document and select the intended Simple Camera rig')
     tags = _resolve(document)
+    if not any(bc[c4d.DESC_NAME]=='Aim Mode' for _,bc in tags[0].GetObject().GetUserDataContainer()):
+        raise RuntimeError('Camera Rigs 0.5.4 needs a new hierarchy; create a new rig. Legacy tags were not changed.')
     builder = runpy.run_path(str(Path(__file__).resolve().with_name('builder.py')))
     current = builder['source']()
     compile(current, '<Simple Camera embedded runtime>', 'exec')

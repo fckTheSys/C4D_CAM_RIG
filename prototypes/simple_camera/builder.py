@@ -82,12 +82,15 @@ def _controls(root):
             bc[c4d.DESC_MIN] = 0.0
         ids[name] = root.AddUserData(bc)
         root[ids[name]] = value
-    bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_BOOL)
-    bc[c4d.DESC_NAME] = 'Use Target'
+    bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_LONG)
+    bc[c4d.DESC_NAME] = 'Aim Mode'
     bc[c4d.DESC_PARENTGROUP] = look
     bc[c4d.DESC_ANIMATE] = c4d.DESC_ANIMATE_OFF
-    ids['Use Target'] = root.AddUserData(bc)
-    root[ids['Use Target']] = True
+    cycle=c4d.BaseContainer()
+    for i,name in enumerate(('Manual','World Target','Local Target')): cycle[i]=name
+    bc[c4d.DESC_CYCLE]=cycle
+    ids['Aim Mode'] = root.AddUserData(bc)
+    root[ids['Aim Mode']] = 1
     bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_STRING)
     bc[c4d.DESC_NAME] = 'Lens controls'
     bc[c4d.DESC_PARENTGROUP] = camera
@@ -100,7 +103,8 @@ def _controls(root):
         bc[c4d.DESC_PARENTGROUP] = parent
         bc[c4d.DESC_CUSTOMGUI] = c4d.CUSTOMGUI_LINKBOX
         bc[c4d.DESC_ANIMATE] = c4d.DESC_ANIMATE_OFF
-        bc[c4d.DESC_EDITABLE] = name == 'Path'
+        bc[c4d.DESC_EDITABLE] = name in ('Path','Target')
+        if name=='Target': bc[c4d.DESC_SHORT_NAME]='World Target'
         ids[name] = root.AddUserData(bc)
     bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_STRING)
     bc[c4d.DESC_NAME] = 'Status'
@@ -118,7 +122,7 @@ def source():
     helpers=folder/'path_source.py'
     if not helpers.is_file(): helpers=folder.parent/'path_source.py'
     return '\n\n'.join(p.read_text(encoding='utf-8') for p in
-                       (helpers,folder/'motion_math.py',folder/'path_math.py',folder/'curve_math.py',folder/'runtime.py'))
+                       (helpers,helpers.with_name('look_source.py'),folder/'motion_math.py',folder/'path_math.py',folder/'curve_math.py',folder/'runtime.py'))
 
 
 def priority(tag,value):
@@ -133,11 +137,12 @@ def build(document):
     root.GetDataInstance().SetInt32(ROLE_ID,1)
     obj={1:root}
     for role,name,parent in [(2,'Path',1),(3,'Target',1),(4,'Route',1),(5,'Body',4),
-                              (6,'Aim',5),(7,'Look',6),(8,'FX',7),(9,'Camera',8)]:
+                              (10,'Local Target',5),(6,'Aim',5),(7,'Look',6),(8,'FX',7),(9,'Camera',8)]:
         node=c4d.SplineObject(3,c4d.SPLINETYPE_BEZIER) if role==2 else c4d.BaseObject(1057516 if role==9 else c4d.Onull)
         if node is None: raise RuntimeError('Required native object unavailable')
         node.SetName(name);node.GetDataInstance().SetInt32(ROLE_ID,role)
         node.InsertUnder(obj[parent]);obj[role]=node
+    obj[10].SetRelPos(c4d.Vector(0,0,300))
     path=obj[2]
     path.SetAllPoints([c4d.Vector(0),c4d.Vector(100,0,300),c4d.Vector(-50,0,1200)])
     for i,left,right in [(0,c4d.Vector(0,0,-20),c4d.Vector(0,0,20)),

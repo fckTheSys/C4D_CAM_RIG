@@ -3,7 +3,7 @@ from pathlib import Path
 import c4d
 
 ROLE_ID = 10699220
-VERSION = '0.5.3'
+VERSION = '0.5.4'
 
 
 def group(root, name, parent=None):
@@ -56,7 +56,7 @@ def controls(root, mode):
             bc[c4d.DESC_EDITABLE] = False
         if key in ('aim_mode', 'movement_mode'):
             cycle = c4d.BaseContainer()
-            names = ('Manual', 'Target') if key == 'aim_mode' else ('Orbit', 'Trajectory', 'Free')
+            names = ('Manual', 'World Target', 'Local Target') if key == 'aim_mode' else ('Orbit', 'Trajectory', 'Free')
             for index, name in enumerate(names):
                 cycle[index] = name
             bc[c4d.DESC_CYCLE] = cycle
@@ -93,7 +93,7 @@ def controls(root, mode):
         add('offset_' + axis, 'Local offset ' + axis.upper() + ' (cm)',
             c4d.DTYPE_REAL, movement, 0., -200., 200.)
     add('aim_mode', 'Aim mode', c4d.DTYPE_LONG, look, 1)
-    add('target', 'Look target', c4d.DTYPE_BASELISTLINK, look)
+    add('target', 'World Target', c4d.DTYPE_BASELISTLINK, look)
     for key, label in (('pan', 'Pan (deg)'), ('tilt', 'Tilt (deg)'), ('roll', 'Roll (deg)')):
         add(key, label, c4d.DTYPE_REAL, look, 0., -180., 180.)
     add('camera', 'Output camera', c4d.DTYPE_BASELISTLINK, optics)
@@ -136,6 +136,7 @@ def build(document, mode=0, use_redshift=True):
               (4, 'Orbit Path', 1, c4d.Osplinecircle), (5, 'Motion', 1, c4d.Onull),
               (9, 'Position Offset', 5, c4d.Onull),
               (12, 'Inertia', 9, c4d.Onull),
+              (14, 'Local Target', 12, c4d.Onull),
               (6, 'Aim', 12, c4d.Onull), (7, 'Frame', 6, c4d.Onull),
               (13, 'Motion FX', 7, c4d.Onull),
               (8, 'Camera', 13, camera_type), (11, 'Free Controller', 1, c4d.Onull))
@@ -164,6 +165,7 @@ def build(document, mode=0, use_redshift=True):
     if mode == 0:
         objects[4][c4d.PRIM_PLANE] = c4d.PRIM_PLANE_XZ
         objects[4][c4d.PRIM_CIRCLE_RADIUS] = 500.
+    objects[14].SetRelPos(c4d.Vector(0,0,300))
     ids = controls(root, mode)
     for key, role in (('center', 2), ('target', 3), ('camera', 8), ('path', 10), ('free', 11)):
         if key in ids:
@@ -187,7 +189,7 @@ def build(document, mode=0, use_redshift=True):
         path_helpers = folder.parent / 'path_source.py'
     code = 'UD = ' + repr(slots) + '\nFIXED_MODE = ' + repr(mode) + '\n' + '\n\n'.join(
         path.read_text(encoding='utf-8') for path in
-        (path_helpers, folder/'effects_math.py', folder/'inertia.py', folder/'runtime.py'))
+        (path_helpers, path_helpers.with_name('look_source.py'), folder/'effects_math.py', folder/'inertia.py', folder/'runtime.py'))
     compile(code, 'Cine Prepare', 'exec')
     tag = c4d.BaseTag(c4d.Tpython)
     tag.SetName('Cine Prepare ' + VERSION)

@@ -8,7 +8,7 @@ import zipfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.5.3'
+VERSION = '0.5.4'
 
 
 def main():
@@ -42,6 +42,7 @@ def main():
                   for name in ('builder.py','runtime.py','motion_math.py','path_math.py','curve_math.py','PARAMETERS_RU.md')})
     for runtime in ('runtime', 'ck_runtime'):
         files[runtime+'/path_source.py'] = ROOT/'prototypes'/'path_source.py'
+        files[runtime+'/look_source.py'] = ROOT/'prototypes'/'look_source.py'
     for name in ('CAMERA_RIGS_GUIDE_RU.md', 'CK_CAM_PORTABILITY.md'):
         files['docs/'+name] = ROOT/'docs'/name
     payload = {name:path.read_bytes() for name,path in files.items()}

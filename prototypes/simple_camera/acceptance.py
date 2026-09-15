@@ -73,7 +73,7 @@ def _resolve(document):
             raise RuntimeError('Duplicate role in reopened rig')
         objects[role] = node
         stack.extend(node.GetChildren())
-    if set(objects) != set(range(1, 10)):
+    if set(objects) != set(range(1, 11)):
         raise RuntimeError('Incomplete reopened rig role map')
     align = objects[4].GetTag(c4d.Taligntospline)
     target = objects[6].GetTag(c4d.Ttargetexpression)

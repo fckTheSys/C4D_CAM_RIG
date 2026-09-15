@@ -22,9 +22,9 @@ def nodes(root):
                 raise ValueError('Duplicate rig role')
             found[role] = node
         stack.extend(node.GetChildren())
-    if set(found) not in (set(range(1, 10)), set(range(1, 10)) - {2}):
+    if set(found) not in (set(range(1, 11)), set(range(1, 11)) - {2}):
         raise ValueError('Incomplete rig hierarchy')
-    for role, parent in ((2,1),(3,1),(4,1),(5,4),(6,5),(7,6),(8,7),(9,8)):
+    for role, parent in ((2,1),(3,1),(4,1),(5,4),(10,5),(6,5),(7,6),(8,7),(9,8)):
         if role in found and found[role].GetUp() != found[parent]:
             raise ValueError('Rig hierarchy changed')
     return found
@@ -225,12 +225,10 @@ def validate(root, objects):
         expressions=[tag for tag in node.GetTags() if tag.GetInfo() & c4d.TAG_EXPRESSION]
         if any(tag.GetType()!=allowed for tag in expressions) or len(expressions) != (1 if allowed else 0):
             raise ValueError('Unexpected expression on driven node')
-    if any(tag.GetInfo() & c4d.TAG_EXPRESSION for tag in objects[3].GetTags()):
-        raise ValueError('Target must use direct keys, not expression dependencies')
     if objects[9].GetRelPos().GetLength()>1e-10 or objects[9].GetRelRot().GetLength()>1e-10:
         raise ValueError('Camera transform must be identity; use root controls')
     ids={bc[c4d.DESC_NAME]:desc for desc,bc in scalar_controls(root)}
-    mode_track=root.FindCTrack(ids['Use Target'])
+    mode_track=root.FindCTrack(ids['Aim Mode'])
     if mode_track is not None: raise ValueError('Animated aim mode unsupported')
     progress_track=root.FindCTrack(ids['Progress'])
     if progress_track is not None:
@@ -264,6 +262,9 @@ def execute(tag):
     progress = lambda at: max(0.0, min(1.0, read('Progress', at)))
     align = obj[4].GetTag(c4d.Taligntospline)
     target_tag = obj[6].GetTag(c4d.Ttargetexpression)
+    aim_mode=root[ids['Aim Mode']]
+    world_desc=next(desc for desc,bc in root.GetUserDataContainer() if bc[c4d.DESC_NAME]=='Target')
+    look=look_source(root,aim_mode,root[world_desc],obj[10],obj[6])
     if tag.GetDataInstance().GetInt32(ROLE_ID)==1:
         natural = table.parameter(progress(t))
         # Live native Bezier fixture: Align consumes GetSplinePoint's natural u.
@@ -273,12 +274,12 @@ def execute(tag):
         obj[5].SetRelPos(c4d.Vector(read('Body X',t),read('Height',t)+read('Body Y',t),read('Body Z',t)))
         # Keep native Target scheduled; a null link bypasses aiming in manual mode.
         # Toggling EXPRESSION_ENABLE here delays re-enabling until a later pass.
-        target_tag[c4d.TARGETEXPRESSIONTAG_LINK]=obj[3] if root[ids['Use Target']] else None
-        if not root[ids['Use Target']]: obj[6].SetRelRot(c4d.Vector(0))
+        target_tag[c4d.TARGETEXPRESSIONTAG_LINK]=look
+        obj[6].SetRelRot(c4d.Vector(0))
         return
     # Native expression enable changes may be observed only on the next pass.
     # Finish owns the manual identity after the native Target's priority.
-    if not root[ids['Use Target']]: obj[6].SetMl(c4d.Matrix())
+    if aim_mode==0: obj[6].SetMl(c4d.Matrix())
     obj[7].SetMl(c4d.utils.MatrixRotY(math.radians(read('Pan',t))) *
                     c4d.utils.MatrixRotX(math.radians(read('Tilt',t))) *
                     c4d.utils.MatrixRotZ(math.radians(read('Roll',t))))
@@ -320,6 +321,10 @@ def main():
         print('Simple Camera ERROR: '+str(error))
         op.GetDataInstance().SetString(ROLE_ID+1,str(error))
         message='ERROR: '+str(error)
+        try:
+            nodes(op.GetObject())[6].GetTag(c4d.Ttargetexpression)[c4d.TARGETEXPRESSIONTAG_LINK] = None
+        except Exception:
+            pass
         try:
             nodes(op.GetObject())[4].GetTag(c4d.Taligntospline)[c4d.ALIGNTOSPLINETAG_LINK] = None
         except Exception:

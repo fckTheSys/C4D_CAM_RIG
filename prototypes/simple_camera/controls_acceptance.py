@@ -71,11 +71,11 @@ def run(output_directory):
               if desc[desc.GetDepth()-1].dtype == c4d.DTYPE_GROUP]
     check('compact groups', all(name in groups for name in required_groups), groups=groups)
     check('percent progress', metadata['Progress'][1][c4d.DESC_UNIT] == c4d.DESC_UNIT_PERCENT)
-    check('mode not animatable', metadata['Use Target'][1][c4d.DESC_ANIMATE] == c4d.DESC_ANIMATE_OFF)
+    check('mode not animatable', metadata['Aim Mode'][1][c4d.DESC_ANIMATE] == c4d.DESC_ANIMATE_OFF)
     links_ok = all(root[metadata[name][0]] == objects[role] and
-                   metadata[name][1][c4d.DESC_EDITABLE] == 0
+                   bool(metadata[name][1][c4d.DESC_EDITABLE]) == (name != 'Camera')
                    for name, role in (('Path', 2), ('Target', 3), ('Camera', 9)))
-    check('readonly object links', links_ok)
+    check('editable path/target and readonly camera', links_ok)
     check('readonly status', 'Status' in metadata and metadata['Status'][1][c4d.DESC_EDITABLE] == 0)
 
     def set_value(name, value):
@@ -97,9 +97,9 @@ def run(output_directory):
     check('zero effects base pose', max(fx_error, camera_error) <= 1e-10,
           fx_identity_error=fx_error, camera_look_error=camera_error)
     # Visit a target-derived orientation before switching to manual mode.
-    set_value('Use Target', True)
+    set_value('Aim Mode', 1)
     evaluate(0)
-    set_value('Use Target', False)
+    set_value('Aim Mode', 0)
     for name, value in (('Pan', 30.0), ('Tilt', 70.0), ('Roll', 90.0), ('Body Y', 100.0)):
         set_value(name, value)
     evaluate(0)
@@ -115,7 +115,7 @@ def run(output_directory):
     jump_error = (actual - expected_jump).GetLength()
     check('jump stays rig up with tilt70 roll90', jump_error <= 1e-10, error_cm=jump_error)
 
-    set_value('Use Target', True)
+    set_value('Aim Mode', 1)
     evaluate(0)
     expected_direction=(objects[3].GetMg().off-objects[6].GetMg().off).GetNormalized()
     aim_direction_error=(objects[6].GetMg().v3.GetNormalized()-expected_direction).GetLength()
@@ -144,4 +144,5 @@ def run(output_directory):
               'evidence_path': str(evidence)}
     with evidence.open('x', encoding='utf-8') as stream:
         json.dump(result, stream, ensure_ascii=False, indent=2, allow_nan=False)
+    c4d.documents.KillDocument(document)
     return result
