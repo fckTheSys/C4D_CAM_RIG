@@ -100,7 +100,7 @@ def _controls(root):
         bc[c4d.DESC_PARENTGROUP] = parent
         bc[c4d.DESC_CUSTOMGUI] = c4d.CUSTOMGUI_LINKBOX
         bc[c4d.DESC_ANIMATE] = c4d.DESC_ANIMATE_OFF
-        bc[c4d.DESC_EDITABLE] = False
+        bc[c4d.DESC_EDITABLE] = name == 'Path'
         ids[name] = root.AddUserData(bc)
     bc = c4d.GetCustomDataTypeDefault(c4d.DTYPE_STRING)
     bc[c4d.DESC_NAME] = 'Status'
@@ -115,14 +115,16 @@ def _controls(root):
 
 def source():
     folder=Path(__file__).parent
-    return '\n\n'.join((folder/name).read_text(encoding='utf-8') for name in
-                       ('motion_math.py','path_math.py','curve_math.py','runtime.py'))
+    helpers=folder/'path_source.py'
+    if not helpers.is_file(): helpers=folder.parent/'path_source.py'
+    return '\n\n'.join(p.read_text(encoding='utf-8') for p in
+                       (helpers,folder/'motion_math.py',folder/'path_math.py',folder/'curve_math.py',folder/'runtime.py'))
 
 
 def priority(tag,value):
     data=c4d.PriorityData()
-    data.SetPriorityValue(c4d.PRIORITYVALUE_MODE,c4d.CYCLE_EXPRESSION)
-    data.SetPriorityValue(c4d.PRIORITYVALUE_PRIORITY,value)
+    data.SetPriorityValue(c4d.PRIORITYVALUE_MODE,c4d.CYCLE_GENERATORS)
+    data.SetPriorityValue(c4d.PRIORITYVALUE_PRIORITY,130+value)
     tag[c4d.EXPRESSION_PRIORITY]=data
 
 

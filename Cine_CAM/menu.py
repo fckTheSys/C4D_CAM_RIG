@@ -5,7 +5,7 @@ from pathlib import Path
 import c4d
 
 PLUGIN_ID = 10699230
-VERSION = '0.5.2'
+VERSION = '0.5.3'
 CK_ROLE_ID = 10699101
 ROLE_ID = 10699220
 
@@ -43,7 +43,7 @@ def inspect_ck(root):
                 raise ValueError('Duplicate CK_CAM role')
             objects[role] = node
         stack.extend(node.GetChildren())
-    if set(objects) != set(range(1,10)) or any(objects[r].GetUp()!=objects[p] for r,p in parents.items()):
+    if set(objects) not in (set(range(1,10)),set(range(1,10))-{2}) or any(objects[r].GetUp()!=objects[p] for r,p in parents.items() if r in objects):
         raise ValueError('Incomplete CK_CAM hierarchy')
     native = {bc[c4d.DESC_NAME]:desc for desc,bc in root.GetUserDataContainer()}
     names = {'camera':'Camera','target':'Target','path':'Path','status':'Status',
@@ -53,7 +53,7 @@ def inspect_ck(root):
     if any(name not in native for name in names.values()):
         raise ValueError('Missing CK_CAM controls')
     ids = {key:native[name] for key,name in names.items()}
-    if any(root[ids[key]] != objects[role] for key,role in (('camera',9),('target',3),('path',2))):
+    if any(root[ids[key]] != objects[role] for key,role in (('camera',9),('target',3))):
         raise ValueError('CK_CAM links changed')
     if len([t for t in root.GetTags() if t.GetType()==c4d.Tpython]) != 2:
         raise ValueError('Expected two embedded CK_CAM stages')
@@ -91,9 +91,10 @@ def inspect(root):
                 raise ValueError('Duplicate role in rig hierarchy')
             objects[role] = node
         stack.extend(node.GetChildren())
-    if set(objects) != set(parents) | {1}:
+    expected = set(parents) | {1}
+    if set(objects) != expected and not (mode == 1 and set(objects) == expected - {10}):
         raise ValueError('Incomplete rig hierarchy')
-    if any(objects[role].GetUp()!=objects[parent] for role,parent in parents.items()):
+    if any(objects[role].GetUp()!=objects[parent] for role,parent in parents.items() if role in objects):
         raise ValueError('Rig hierarchy changed')
     descriptors = {desc[desc.GetDepth()-1].id:desc for desc,_ in root.GetUserDataContainer()}
     if any(type(slot) is not int or slot not in descriptors for slot in ids.values()):
@@ -124,7 +125,9 @@ def navigate(document, root, destination):
         node = root[ids['target']] or objects[3]
     elif destination == 'motion':
         role = (2,10,11,2)[mode]
-        node = root[ids[('center','path','free','path')[mode]]] or objects[role]
+        node = root[ids[('center','path','free','path')[mode]]]
+        if mode in (0,2) and node is None:
+            node = objects.get(role)
     else:
         raise ValueError('Unknown navigation action')
     if not isinstance(node,c4d.BaseObject) or node.GetDocument()!=document:

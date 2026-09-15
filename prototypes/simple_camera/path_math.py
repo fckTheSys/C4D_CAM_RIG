@@ -15,6 +15,33 @@ class ArcTable:
     MAX_SAMPLES = 131073
     MIN_DEPTH = 4
 
+    @classmethod
+    def from_polyline(cls, points):
+        """Exact arc table for equal-parameter linear edges, including sharp corners."""
+        points = tuple(tuple(float(v) for v in p) for p in points)
+        if len(points) < 2 or any(len(p) != 3 or not all(math.isfinite(v) for v in p) for p in points):
+            raise ValueError('Polyline needs at least two finite 3D points')
+        table = cls.__new__(cls)
+        table.rows = [(0., 0., 0.)]
+        distance = horizontal = 0.
+        count = len(points)-1
+        for i, (a,b) in enumerate(zip(points,points[1:]),1):
+            distance += math.dist(a,b)
+            horizontal += math.hypot(b[0]-a[0],b[2]-a[2])
+            table.rows.append((i/count,distance,horizontal))
+        def point(u):
+            phase = min(1.,max(0.,u))*count
+            i = min(count-1,int(phase)); t = phase-i
+            return tuple(a+(b-a)*t for a,b in zip(points[i],points[i+1]))
+        table._point = point
+        table.length = distance
+        table.sample_count = len(points)
+        table.tolerance = 0.
+        table.converged = distance > 0.
+        table.diagnostics = () if distance > 0. else ('zero_length',)
+        table._distances = [r[1] for r in table.rows]
+        return table
+
     def __init__(self, point, tolerance=0.001, max_depth=18):
         if not math.isfinite(tolerance) or tolerance <= 0:
             raise ValueError("tolerance must be finite and positive")

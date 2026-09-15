@@ -113,13 +113,14 @@ def motion_source(root, objects, signature):
             _UNIT_CIRCLE = circle, helper, spline, length
         spline, length = _UNIT_CIRCLE[2:]
     elif mode == 1:
-        source = source_link(root, read(root, 'path'), objects[10], driven)
-        transform = transform_reader(source, root, signature)
-        if source.GetChildren() or source.GetDeformCache() is not None:
-            raise ValueError('Inertia requires a static undeformed spline')
-        spline = source
-        signature.append(('geometry', source[c4d.SPLINEOBJECT_TYPE], source.IsClosed(), tuple(xyz(p) for p in source.GetAllPoints()),
-                          tuple((xyz(source.GetTangent(i)['vl']), xyz(source.GetTangent(i)['vr'])) for i in range(source.GetPointCount()))))
+        source = source_link(root, read(root, 'path'), None, driven)
+        spline, world = evaluated_path(source, root, driven)
+        if source.GetType() == TRACER_TYPE:
+            transform = lambda time: world
+            signature.append(('static_tracer', str(source.GetGUID()), path_matrix_stamp(world)))
+        else:
+            transform = transform_reader(source, root, signature)
+        signature.append(('geometry', path_geometry_stamp(spline)))
     else:
         source = source_link(root, read(root, 'free'), objects[11], driven)
         transform = transform_reader(source, root, signature)

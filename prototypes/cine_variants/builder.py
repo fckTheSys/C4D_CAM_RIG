@@ -3,7 +3,7 @@ from pathlib import Path
 import c4d
 
 ROLE_ID = 10699220
-VERSION = '0.4.0-prototype'
+VERSION = '0.5.3'
 
 
 def group(root, name, parent=None):
@@ -114,8 +114,8 @@ def controls(root, mode):
 
 def priority(tag, value):
     data = c4d.PriorityData()
-    data.SetPriorityValue(c4d.PRIORITYVALUE_MODE, c4d.CYCLE_EXPRESSION)
-    data.SetPriorityValue(c4d.PRIORITYVALUE_PRIORITY, value)
+    data.SetPriorityValue(c4d.PRIORITYVALUE_MODE, c4d.CYCLE_GENERATORS)
+    data.SetPriorityValue(c4d.PRIORITYVALUE_PRIORITY, 130 + value)
     data.SetPriorityValue(c4d.PRIORITYVALUE_CAMERADEPENDENT, False)
     tag[c4d.EXPRESSION_PRIORITY] = data
 
@@ -182,8 +182,12 @@ def build(document, mode=0, use_redshift=True):
     priority(target, -10)
     slots = {key: desc[desc.GetDepth() - 1].id for key, desc in ids.items()}
     folder = Path(__file__).parent
+    path_helpers = folder / 'path_source.py'
+    if not path_helpers.is_file():
+        path_helpers = folder.parent / 'path_source.py'
     code = 'UD = ' + repr(slots) + '\nFIXED_MODE = ' + repr(mode) + '\n' + '\n\n'.join(
-        (folder / name).read_text(encoding='utf-8') for name in ('effects_math.py', 'inertia.py', 'runtime.py'))
+        path.read_text(encoding='utf-8') for path in
+        (path_helpers, folder/'effects_math.py', folder/'inertia.py', folder/'runtime.py'))
     compile(code, 'Cine Prepare', 'exec')
     tag = c4d.BaseTag(c4d.Tpython)
     tag.SetName('Cine Prepare ' + VERSION)

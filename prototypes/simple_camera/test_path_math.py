@@ -15,6 +15,16 @@ def bezier(points):
 
 
 class ArcTableTests(unittest.TestCase):
+    def test_linear_corners_use_exact_knots(self):
+        points = ((0,0,0),(300,0,0),(300,400,0),(300,400,500))
+        table = ArcTable.from_polyline(points)
+        self.assertTrue(table.converged)
+        self.assertEqual(table.length, 1200)
+        self.assertAlmostEqual(table.parameter(300/1200), 1/3)
+        self.assertAlmostEqual(table.parameter(700/1200), 2/3)
+        self.assertEqual(table.horizontal_distance(1), 800)
+        self.assertEqual(table.point_at(.25), points[1])
+
     def check_dense_reference(self, point):
         n = 100000
         points = [point(i/n) for i in range(n+1)]

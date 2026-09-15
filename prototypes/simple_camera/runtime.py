@@ -22,10 +22,10 @@ def nodes(root):
                 raise ValueError('Duplicate rig role')
             found[role] = node
         stack.extend(node.GetChildren())
-    if set(found) != set(range(1, 10)):
+    if set(found) not in (set(range(1, 10)), set(range(1, 10)) - {2}):
         raise ValueError('Incomplete rig hierarchy')
     for role, parent in ((2,1),(3,1),(4,1),(5,4),(6,5),(7,6),(8,7),(9,8)):
-        if found[role].GetUp() != found[parent]:
+        if role in found and found[role].GetUp() != found[parent]:
             raise ValueError('Rig hierarchy changed')
     return found
 
@@ -86,26 +86,31 @@ def controls(root, document):
     return ids, read
 
 
-def geometry_signature(path):
-    points = tuple((v.x, v.y, v.z) for v in path.GetAllPoints())
-    tangents = tuple((tuple(path.GetTangent(i)[k][a] for a in range(3)))
-                     for i in range(path.GetPointCount()) for k in ('vl', 'vr'))
-    return (points, tangents)
+def selected_path(root, objects):
+    desc = next(desc for desc, bc in root.GetUserDataContainer() if bc[c4d.DESC_NAME] == 'Path')
+    return root[desc]
 
 
-def prepare_data(root, document, objects, read):
+def prepare_data(path, matrix):
     global _cache
-    path = objects[2]
-    sig = geometry_signature(path)
+    sig = (path_geometry_stamp(path), path_matrix_stamp(matrix))
     if _cache.get('geometry') != sig:
         def point(u):
-            p = path.GetSplinePoint(u)
+            p = matrix * path.GetSplinePoint(u)
             return (p.x, p.y, p.z)
-        table = ArcTable(point)
+        if path[c4d.SPLINEOBJECT_TYPE] == c4d.SPLINETYPE_LINEAR:
+            points = [path_vector_stamp(matrix*p) for p in path.GetAllPoints()]
+            if path.IsClosed(): points.append(points[0])
+            table = ArcTable.from_polyline(points)
+        else:
+            table = ArcTable(point)
         if not table.converged:
             raise ValueError('Arc approximation failed: '+str(table.diagnostics))
         if table.length <= 1e-8:
             raise ValueError('Path has zero length')
+        # ArcTable needs its callback only during construction. Do not retain a
+        # generator cache object: C4D replaces it after controller edits.
+        table._point = None
         _cache = {'geometry': sig, 'table': table, 'integrals': {}}
     return _cache
 
@@ -199,14 +204,6 @@ def motion_phases(data, read, document, t):
 def validate(root, objects):
     if root.GetUp() is not None or (root.GetRelScale()-c4d.Vector(1)).GetLength()>1e-10:
         raise ValueError('Prototype requires top-level root with scale 1')
-    path = objects[2]
-    if ((path.GetMl().off).GetLength()>1e-10 or path.GetRelRot().GetLength()>1e-10 or
-            (path.GetRelScale()-c4d.Vector(1)).GetLength()>1e-10):
-        raise ValueError('Path transform must be identity; edit spline points')
-    if path[c4d.SPLINEOBJECT_TYPE]!=c4d.SPLINETYPE_BEZIER or path.IsClosed() or path.GetSegmentCount()>1:
-        raise ValueError('One open static Bezier path is required')
-    if path.GetChildren() or path.GetCTracks() or any(tag.GetInfo() & c4d.TAG_EXPRESSION for tag in path.GetTags()):
-        raise ValueError('Animated/expression path unsupported')
     for tr in root.GetCTracks():
         if tr.GetBefore()!=c4d.CLOOP_CONSTANT or tr.GetAfter()!=c4d.CLOOP_CONSTANT:
             raise ValueError('Prototype requires constant track extrapolation')
@@ -257,7 +254,12 @@ def execute(tag):
     ids, read = controls(root, document)
     validate(root, obj)
     t = document.GetTime().Get()
-    data = prepare_data(root, document, obj, read)
+    source = selected_path(root, obj)
+    spline, world = evaluated_path(source, root, tuple(obj[i] for i in range(4,10)), require_static=True)
+    # Walk uses root-horizontal distance and direction; external path transforms
+    # therefore participate in both the distance cache and tangent calculation.
+    path_matrix = ~root.GetMg() * world
+    data = prepare_data(spline, path_matrix)
     table = data['table']
     progress = lambda at: max(0.0, min(1.0, read('Progress', at)))
     align = obj[4].GetTag(c4d.Taligntospline)
@@ -266,7 +268,7 @@ def execute(tag):
         natural = table.parameter(progress(t))
         # Live native Bezier fixture: Align consumes GetSplinePoint's natural u.
         align[c4d.ALIGNTOSPLINETAG_POSITION]=natural
-        align[c4d.ALIGNTOSPLINETAG_LINK]=obj[2]
+        align[c4d.ALIGNTOSPLINETAG_LINK]=source
         align[c4d.ALIGNTOSPLINETAG_TANGENTIAL]=False
         obj[5].SetRelPos(c4d.Vector(read('Body X',t),read('Height',t)+read('Body Y',t),read('Body Z',t)))
         # Keep native Target scheduled; a null link bypasses aiming in manual mode.
@@ -289,7 +291,7 @@ def execute(tag):
     phase=motion_phases(data,read,document,t)
     lateral,vertical,lean=walk(phase[0],speed(t),read('Walk Strength',t),read('Walk Amplitude',t),read('Walk Lean',t),read('Softness',t))
     u=table.parameter(progress(t))
-    tangent=obj[2].GetSplineTangent(u)
+    tangent=path_matrix.MulV(spline.GetSplineTangent(u))
     side=c4d.Vector(tangent.z,0,-tangent.x)
     if side.GetLength()<1e-8: side=c4d.Vector(1,0,0)
     side.Normalize()
@@ -318,6 +320,10 @@ def main():
         print('Simple Camera ERROR: '+str(error))
         op.GetDataInstance().SetString(ROLE_ID+1,str(error))
         message='ERROR: '+str(error)
+        try:
+            nodes(op.GetObject())[4].GetTag(c4d.Taligntospline)[c4d.ALIGNTOSPLINETAG_LINK] = None
+        except Exception:
+            pass
     for desc,bc in op.GetObject().GetUserDataContainer():
         if bc[c4d.DESC_NAME]=='Status':
             if op.GetObject()[desc]!=message:

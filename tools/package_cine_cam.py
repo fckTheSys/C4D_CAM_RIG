@@ -8,7 +8,7 @@ import zipfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.5.2'
+VERSION = '0.5.3'
 
 
 def main():
@@ -40,7 +40,12 @@ def main():
                   for name in ('builder.py','runtime.py','inertia.py','effects_math.py')})
     files.update({'ck_runtime/'+name:ROOT/'prototypes'/'simple_camera'/name
                   for name in ('builder.py','runtime.py','motion_math.py','path_math.py','curve_math.py','PARAMETERS_RU.md')})
+    for runtime in ('runtime', 'ck_runtime'):
+        files[runtime+'/path_source.py'] = ROOT/'prototypes'/'path_source.py'
+    for name in ('CAMERA_RIGS_GUIDE_RU.md', 'CK_CAM_PORTABILITY.md'):
+        files['docs/'+name] = ROOT/'docs'/name
     payload = {name:path.read_bytes() for name,path in files.items()}
+    payload['README.md'] = payload['README.md'].replace(b'../docs/CAMERA_RIGS_GUIDE_RU.md', b'docs/CAMERA_RIGS_GUIDE_RU.md')
     for name,data in payload.items():
         if name.endswith(('.py','.pyp')):
             compile(data.decode('utf-8'),name,'exec')
@@ -62,7 +67,7 @@ def main():
         for name,source in files.items():
             target = destination/name
             target.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copy2(source,target)
+            target.write_bytes(payload[name])
             assert hashlib.sha256(target.read_bytes()).hexdigest() == manifest['files'][name]
         (destination/'manifest.json').write_bytes(encoded)
     print(json.dumps({'status':'PASS','zip':str(output),'installed':str(destination) if destination else None,

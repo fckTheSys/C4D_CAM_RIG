@@ -1,7 +1,7 @@
 """Cine fixed-purpose portable expression. Mode is baked at construction.
 
 No external package imports, scene edits or forced evaluation from expressions.
-Prepare -30, native Align -20, inertia -15, native Target -10.
+Generators: Prepare 100, native Align 110, inertia 115, native Target 120.
 """
 import math
 import c4d
@@ -22,10 +22,11 @@ def resolve(root):
                 raise ValueError('Duplicate rig role')
             found[role] = node
         stack.extend(node.GetChildren())
-    if set(found) != set(PARENTS) | {1}:
+    expected = set(PARENTS) | {1}
+    if set(found) != expected and not (FIXED_MODE == 1 and set(found) == expected - {10}):
         raise ValueError('Incomplete rig hierarchy')
     for role, parent in PARENTS.items():
-        if found[role].GetUp() != found[parent]:
+        if role in found and found[role].GetUp() != found[parent]:
             raise ValueError('Rig hierarchy changed')
     return found
 
@@ -95,12 +96,8 @@ def execute(tag):
         circle[c4d.PRIM_CIRCLE_RADIUS] = radius
         path, progress = circle, (angle % 360.0) / 360.0
     elif mode == 1:
-        path = source_link(root, read(root, 'path'), objects[10], driven)
-        if not isinstance(path, c4d.SplineObject) or path.GetSegmentCount() > 1 or path.GetPointCount() < 2:
-            raise ValueError('Trajectory requires one editable spline with at least two points')
-        points = path.GetAllPoints()
-        if all((point - points[0]).GetLength() < 1e-8 for point in points[1:]):
-            raise ValueError('Trajectory has zero length')
+        path = source_link(root, read(root, 'path'), None, driven)
+        evaluated_path(path, root, driven)
         progress = max(0., min(1., number(root, 'progress')))
     else:
         free = source_link(root, read(root, 'free'), objects[11], driven)
@@ -161,6 +158,13 @@ def main():
         message = ('Orbit', 'Trajectory', 'Free')[read(root, 'movement_mode')] + ' prototype: ready'
     except Exception as error:
         message = 'Stopped: ' + str(error)
+        if op.GetDataInstance().GetInt32(ROLE_ID) != 2:
+            # Do not continue animating the previously linked path after an invalid edit.
+            try:
+                motion = resolve(root)[5]
+                motion.GetTag(c4d.Taligntospline)[c4d.ALIGNTOSPLINETAG_LINK] = None
+            except Exception:
+                pass
     slot = (c4d.ID_USERDATA, UD['status'])
     if root[slot] != message:
         root[slot] = message
