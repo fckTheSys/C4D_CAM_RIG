@@ -5,7 +5,7 @@ import c4d
 ROLE_ID=10699101
 DEFAULTS={'Progress':0.0,'Height':170.0,'Body X':0.0,'Body Y':0.0,'Body Z':0.0,
           'Pan':0.0,'Tilt':0.0,'Roll':0.0,'Walk Strength':1.0,'Step Length':70.0,
-          'Walk Amplitude':2.0,'Walk Lean':1.0,'Softness':0.8,
+          'Walk Amplitude':2.0,'Walk Lean':1.0,'Softness':0.8,'Full Walk Speed':40.0,
           'Shake Strength':0.0,'Shake Frequency':2.0,'Shake Position':0.5,'Shake Rotation':0.3,
           'Drift Strength':0.0,'Drift Frequency':0.15,'Drift Position':0.5,'Drift Rotation':0.3,'Seed':1.0}
 
@@ -40,10 +40,12 @@ def _controls(root):
             low, high, step, label = -200.0, 300.0, 1.0, name + ' (cm)'
         elif name in ('Pan', 'Tilt', 'Roll'):
             parent, low, high, step, label = look, -180.0, 180.0, 1.0, name + ' (deg)'
-        elif name.startswith('Walk ') or name in ('Step Length', 'Softness'):
+        elif name.startswith('Walk ') or name in ('Step Length', 'Softness', 'Full Walk Speed'):
             parent = walk_group
             if name == 'Step Length':
                 low, high, step, label = 10.0, 150.0, 1.0, 'Step Length (cm)'
+            elif name == 'Full Walk Speed':
+                low, high, step, label = 1.0, 200.0, 1.0, 'Full Walk Speed (cm/s)'
             elif name == 'Walk Amplitude':
                 high, step, label = 10.0, .1, 'Amplitude (cm)'
             elif name == 'Walk Lean':
@@ -74,7 +76,7 @@ def _controls(root):
             bc[c4d.DESC_UNIT] = c4d.DESC_UNIT_PERCENT
         # No DESC_MIN/MAX on spatial/angle/progress controls: overshoot and
         # multi-turn keys remain available. Runtime validates motion domains.
-        if name == 'Step Length':
+        if name in ('Step Length', 'Full Walk Speed'):
             bc[c4d.DESC_MIN] = .001
         elif name == 'Softness':
             bc[c4d.DESC_MIN], bc[c4d.DESC_MAX] = 0.0, 1.0
@@ -143,6 +145,11 @@ def build(document):
         node.SetName(name);node.GetDataInstance().SetInt32(ROLE_ID,role)
         node.InsertUnder(obj[parent]);obj[role]=node
     obj[10].SetRelPos(c4d.Vector(0,0,300))
+    for role,shape,color in ((3,c4d.NULLOBJECT_DISPLAY_SPHERE,c4d.Vector(1,.65,.1)),(10,c4d.NULLOBJECT_DISPLAY_TRIANGLE,c4d.Vector(.1,.8,1))):
+        obj[role][c4d.NULLOBJECT_DISPLAY]=shape
+        obj[role][c4d.NULLOBJECT_RADIUS]=20.
+        obj[role][c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
+        obj[role][c4d.ID_BASEOBJECT_COLOR]=color
     path=obj[2]
     path.SetAllPoints([c4d.Vector(0),c4d.Vector(100,0,300),c4d.Vector(-50,0,1200)])
     for i,left,right in [(0,c4d.Vector(0,0,-20),c4d.Vector(0,0,20)),

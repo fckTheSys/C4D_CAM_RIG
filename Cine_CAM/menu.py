@@ -7,7 +7,7 @@ from pathlib import Path
 import c4d
 
 PLUGIN_ID = 10699230
-VERSION = '0.5.5'
+VERSION = '0.5.6'
 CK_ROLE_ID = 10699101
 ROLE_ID = 10699220
 
@@ -36,6 +36,8 @@ def create(document, mode):
         number+=1
     root.SetName(base+' %03d'%number)
     camera.SetName('CAM | '+root.GetName())
+    objects[3].SetName('World Target | '+root.GetName())
+    objects[10 if mode==3 else 14].SetName('Local Target | '+root.GetName())
     root[c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
     root[c4d.ID_BASEOBJECT_COLOR]=c4d.Vector(*colorsys.hsv_to_rgb(random.random(),.65,.9))
     document.SetActiveObject(root)
@@ -269,6 +271,8 @@ def navigate(document, root, destination):
         node = objects[9 if mode == 3 else 8]
     elif destination == 'target':
         aim_mode=int(root[ids['aim_mode']])
+        if aim_mode==0:
+            raise ValueError('Manual aim is active. Choose World Target or Local Target in rig controls to use a look target.')
         node = root if aim_mode==0 else objects.get(10 if mode==3 else 14) if aim_mode==2 else root[ids['target']]
     elif destination == 'motion':
         role = (2,10,11,2)[mode]
@@ -356,7 +360,7 @@ class CineMenu(c4d.gui.GeDialog):
         self.section(200,'Selected rig',1)
         self.AddStaticText(210,c4d.BFH_SCALEFIT,name='Select a rig')
         self.GroupBegin(211,c4d.BFH_SCALEFIT,cols=2,rows=0)
-        self.buttons(((201,'Rig controls'),(202,'Movement'),(203,'Target'),(204,'Camera / Lens')))
+        self.buttons(((201,'Rig controls'),(202,'Movement'),(203,'Active look target'),(204,'Camera / Lens')))
         self.GroupEnd()
         self.GroupEnd()
         self.section(220,'Viewport',1)

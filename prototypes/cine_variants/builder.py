@@ -3,7 +3,7 @@ from pathlib import Path
 import c4d
 
 ROLE_ID = 10699220
-VERSION = '0.5.5'
+VERSION = '0.5.6'
 
 
 def group(root, name, parent=None):
@@ -148,6 +148,11 @@ def build(document, mode=0, use_redshift=True):
         if node is None:
             raise RuntimeError('Required native object unavailable: ' + name)
         node.SetName(name)
+        if role in (3,14):
+            node[c4d.NULLOBJECT_DISPLAY]=c4d.NULLOBJECT_DISPLAY_SPHERE if role==3 else c4d.NULLOBJECT_DISPLAY_TRIANGLE
+            node[c4d.NULLOBJECT_RADIUS]=20.
+            node[c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
+            node[c4d.ID_BASEOBJECT_COLOR]=c4d.Vector(1,.65,.1) if role==3 else c4d.Vector(.1,.8,1)
         node.GetDataInstance().SetInt32(ROLE_ID, role)
         node.InsertUnderLast(objects[parent])
         objects[role] = node

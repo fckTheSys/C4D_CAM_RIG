@@ -11,6 +11,17 @@ _spec.loader.exec_module(motion)
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_full_walk_speed_controls_gain_not_phase(self):
+        args=(1.1,20.,1.,2.,1.,.8)
+        old=motion.walk(*args)
+        slow=motion.walk(*args,full_speed=40.)
+        for a,b in zip(old,slow):
+            self.assertAlmostEqual(b,a*.5/.104)
+        self.assertEqual(motion.walk(1.1,0,1,2,1,.8,full_speed=40.),(0.,0.,0.))
+        self.assertEqual(motion.walk(1.1,100,1,2,1,.8,full_speed=40.),motion.walk(1.1,100,1,2,1,.8))
+        for invalid in (0,-1,float('nan')):
+            with self.assertRaises(ValueError):motion.walk(*args,full_speed=invalid)
+
     def test_affine_partial_edges_and_reverse(self):
         a, b = -0.123, 1.017
         expected = (b*b + 3*b) - (a*a + 3*a)

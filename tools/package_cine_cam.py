@@ -8,7 +8,7 @@ import zipfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.5.5'
+VERSION = '0.5.6'
 
 
 def main():

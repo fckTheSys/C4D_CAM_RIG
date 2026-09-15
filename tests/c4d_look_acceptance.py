@@ -52,7 +52,12 @@ def run(menu_path=None):
                 r[aim_id]=switch;evaluate()
                 if switch==0:
                     assert tag[c4d.TARGETEXPRESSIONTAG_LINK] is None
-                    assert menu.navigate(d,r,'target')==r
+                    try:
+                        menu.navigate(d,r,'target')
+                    except ValueError as error:
+                        assert 'Manual aim' in str(error)
+                    else:
+                        raise AssertionError('Manual target navigation must explain the inactive mode')
                 else:pointed_at(external if switch==1 else local)
             keyer=load(ROOT/'prototypes/simple_camera/builder.py').key
             for bad in (None,camera):

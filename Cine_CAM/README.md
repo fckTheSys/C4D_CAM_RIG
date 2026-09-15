@@ -148,3 +148,10 @@ CK_CAM — долю длины пути. Смена формы маршрута 
 
 Исправления входят в новые риги, созданные версией 0.5.3. Установка пакета не
 переписывает Python Tags уже существующих ригов. Legacy остаётся без изменений.
+# Update 0.5.6
+
+CK_CAM adds Full Walk Speed (default 40 cm/s; 100 restores the previous gain).
+World/local look targets use orange sphere / cyan triangle Null displays with
+native editable Radius. Active look target navigation explains Manual mode.
+Missing Tracer controller diagnostics explain how to restore a valid list.
+Existing scene rigs are not migrated automatically.

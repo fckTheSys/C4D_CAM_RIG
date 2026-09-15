@@ -70,13 +70,13 @@ def noise(x, seed):
     return max(-1.0, min(1.0, left + (right - left) * blend))
 
 
-def walk(phase, speed, strength, amplitude, lean_deg, softness):
+def walk(phase, speed, strength, amplitude, lean_deg, softness, full_speed=100.0):
     """Return lateral cm, vertical cm, camera-local roll radians.
 
     One step advances phase by pi; left/right pair is 2*pi. Speed is nonnegative
     horizontal cm/s. Strength is a nonnegative multiplier (1=full), amplitude and
     lean are nonnegative peak scales. Softness is [0,1], 1 giving a sinusoidal bob.
-    A smoothstep speed gate rises from zero to full between 0 and 100 cm/s.
+    A smoothstep speed gate rises from zero to full_speed (cm/s).
     """
     phase = _finite(phase, 'phase')
     values = [_finite(value, name) for value, name in
@@ -85,9 +85,12 @@ def walk(phase, speed, strength, amplitude, lean_deg, softness):
     speed, strength, amplitude, lean_deg, softness = values
     if any(value < 0 for value in values) or softness > 1:
         raise ValueError('motion scales must be nonnegative; softness must be in [0,1]')
+    full_speed = _finite(full_speed, 'Full Walk Speed')
+    if full_speed <= 0:
+        raise ValueError('Full Walk Speed must be positive')
     if strength == 0 or speed == 0:
         return 0.0, 0.0, 0.0
-    ratio = min(speed / 100.0, 1.0)
+    ratio = min(speed / full_speed, 1.0)
     gain = strength * ratio * ratio * (3.0 - 2.0 * ratio)
     lateral = math.sin(phase)
     harmonic = 0.25 * (1.0 - softness)

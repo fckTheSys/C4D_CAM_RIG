@@ -290,7 +290,7 @@ def execute(tag):
         h=0.0001
         return abs(table.horizontal_distance(progress(at+h))-table.horizontal_distance(progress(at-h)))/(2*h)
     phase=motion_phases(data,read,document,t)
-    lateral,vertical,lean=walk(phase[0],speed(t),read('Walk Strength',t),read('Walk Amplitude',t),read('Walk Lean',t),read('Softness',t))
+    lateral,vertical,lean=walk(phase[0],speed(t),read('Walk Strength',t),read('Walk Amplitude',t),read('Walk Lean',t),read('Softness',t),read('Full Walk Speed',t))
     u=table.parameter(progress(t))
     tangent=path_matrix.MulV(spline.GetSplineTangent(u))
     side=c4d.Vector(tangent.z,0,-tangent.x)

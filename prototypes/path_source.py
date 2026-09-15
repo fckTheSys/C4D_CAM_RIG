@@ -58,7 +58,7 @@ def evaluated_path(source, root, driven=(), require_static=False, animated=False
         for i in range(links.GetObjectCount()):
             controller = links.ObjectFromIndex(root.GetDocument(), i)
             if controller is None:
-                raise ValueError('Tracer contains a missing controller')
+                raise ValueError('Tracer contains a missing controller. Remove the empty entry from the Tracer object list.')
             stack = [controller]
             while stack:
                 item = stack.pop()
