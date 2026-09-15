@@ -24,7 +24,7 @@ def require_constant(root, key):
         raise ValueError(key + ' is a per-shot setting; animate Strength instead')
 
 
-def historical_reader(node, desc, document):
+def historical_reader(node, desc, document, precision=1000000):
     live = float(node[desc])
     track = node.FindCTrack(desc)
     if not math.isfinite(live):
@@ -42,14 +42,14 @@ def historical_reader(node, desc, document):
                        curve.GetKey(i).GetTimeRight().Get(), curve.GetKey(i).GetValueLeft(),
                        curve.GetKey(i).GetValueRight()) for i in range(curve.GetKeyCount()))
     def sample(time):
-        value = curve.GetValue(c4d.BaseTime(int(round(time * 1000000)), 1000000), document.GetFps())
+        value = curve.GetValue(c4d.BaseTime(int(round(time * precision)), precision), document.GetFps())
         if not math.isfinite(value):
             raise ValueError('Non-finite historical key value')
         return value
     return sample, ('keys', signature)
 
 
-def transform_reader(node, root, signature):
+def transform_reader(node, root, signature, precision=1000000):
     if node is None:
         return lambda time: c4d.Matrix()
     for tag in node.GetTags():
@@ -69,10 +69,10 @@ def transform_reader(node, root, signature):
     for base in (c4d.ID_BASEOBJECT_REL_POSITION, c4d.ID_BASEOBJECT_REL_ROTATION):
         for axis in (c4d.VECTOR_X, c4d.VECTOR_Y, c4d.VECTOR_Z):
             desc = c4d.DescID(c4d.DescLevel(base, c4d.DTYPE_VECTOR, 0), c4d.DescLevel(axis, c4d.DTYPE_REAL, 0))
-            reader, stamp = historical_reader(node, desc, root.GetDocument())
+            reader, stamp = historical_reader(node, desc, root.GetDocument(), precision)
             readers.append(reader)
             signature.append(stamp)
-    parent = transform_reader(node.GetUp(), root, signature)
+    parent = transform_reader(node.GetUp(), root, signature, precision)
     order = node.GetRotationOrder()
     def sample(time):
         matrix = c4d.utils.HPBToMatrix(c4d.Vector(*(fn(time) for fn in readers[3:])), order)
@@ -88,13 +88,14 @@ def motion_source(root, objects, signature):
     if takes and takes.GetCurrentTake() != takes.GetMainTake():
         raise ValueError('Inertia requires Main Take')
     mode = read(root, 'movement_mode')
+    precision=1000000000 if mode==1 and read(root,'animated_path') else 1000000
     keys = ['offset_x', 'offset_y', 'offset_z']
     keys += ['angle', 'radius', 'height'] if mode == 0 else ['progress'] if mode == 1 else []
     values = {}
     for key in keys:
-        values[key], stamp = historical_reader(root, ud_desc(key), document)
+        values[key], stamp = historical_reader(root, ud_desc(key), document, precision)
         signature.append((key, stamp))
-    root_at = transform_reader(root, root, signature)
+    root_at = transform_reader(root, root, signature, precision)
     driven = tuple(objects[i] for i in (4, 5, 6, 7, 8, 9, 12, 13) if i in objects)
     if mode == 0:
         source = source_link(root, read(root, 'center'), objects[2], driven)
@@ -114,13 +115,17 @@ def motion_source(root, objects, signature):
         spline, length = _UNIT_CIRCLE[2:]
     elif mode == 1:
         source = source_link(root, read(root, 'path'), None, driven)
-        spline, world = evaluated_path(source, root, driven)
-        if source.GetType() == TRACER_TYPE:
+        animated=bool(read(root,'animated_path'))
+        spline, world = evaluated_path(source, root, driven, animated=animated)
+        if animated:
+            deform_at=animated_tracer_sampler(root,source,spline,world,driven,signature)
+        elif source.GetType() == TRACER_TYPE:
             transform = lambda time: world
             signature.append(('static_tracer', str(source.GetGUID()), path_matrix_stamp(world)))
         else:
             transform = transform_reader(source, root, signature)
-        signature.append(('geometry', path_geometry_stamp(spline)))
+        if not animated:
+            signature.append(('geometry', path_geometry_stamp(spline)))
     else:
         source = source_link(root, read(root, 'free'), objects[11], driven)
         transform = transform_reader(source, root, signature)
@@ -134,6 +139,8 @@ def motion_source(root, objects, signature):
             point = spline.GetSplinePoint(length.UniformToNatural(phase)) * max(.001, values['radius'](time))
             return transform(time).off + matrix.MulV(point + c4d.Vector(0, values['height'](time), 0) + offset)
         phase = min(1., max(0., values['progress'](time)))
+        if animated:
+            return deform_at(time,phase)+matrix.MulV(offset)
         return transform(time) * spline.GetSplinePoint(phase) + matrix.MulV(offset)
     return sample
 

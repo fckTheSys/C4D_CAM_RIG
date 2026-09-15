@@ -1,11 +1,13 @@
 """Small creation/navigation palette. No custom scene object or render dependency."""
 import ast
 import importlib.util
+import colorsys
+import random
 from pathlib import Path
 import c4d
 
 PLUGIN_ID = 10699230
-VERSION = '0.5.4'
+VERSION = '0.5.5'
 CK_ROLE_ID = 10699101
 ROLE_ID = 10699220
 
@@ -27,9 +29,147 @@ def create(document, mode):
     root, objects, ids = builder(True).build(document) if mode == 3 else builder().build(document, mode)
     if mode == 3:
         root.SetName('CK_CAM POV')
+    camera=objects[9 if mode==3 else 8]
+    names={node.GetName() for node in scene_objects(document)}
+    base=root.GetName();number=1
+    while base+' %03d'%number in names or 'CAM | '+base+' %03d'%number in names:
+        number+=1
+    root.SetName(base+' %03d'%number)
+    camera.SetName('CAM | '+root.GetName())
+    root[c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
+    root[c4d.ID_BASEOBJECT_COLOR]=c4d.Vector(*colorsys.hsv_to_rgb(random.random(),.65,.9))
     document.SetActiveObject(root)
     c4d.EventAdd()
     return root, objects, ids
+
+
+def scene_objects(document):
+    """Real document objects only, never generator cache or stored stale wrappers."""
+    if document is None:return
+    stack=list(reversed(document.GetObjects()))
+    while stack:
+        node=stack.pop()
+        yield node
+        stack.extend(reversed(node.GetChildren()))
+
+
+def owning_rig(node):
+    while node is not None:
+        if any(node.GetDataInstance().GetInt32(role)==1 for role in (ROLE_ID,CK_ROLE_ID)):
+            return node
+        node=node.GetUp()
+    return None
+
+
+def scene_cameras(document):
+    rows=[]
+    for camera in scene_objects(document):
+        if not bundle_camera(camera):continue
+        root=owning_rig(camera)
+        names=[];node=camera
+        while node is not None:
+            names.append(node.GetName());node=node.GetUp()
+        path=' / '.join(reversed(names))
+        label=(root.GetName()+' / '+camera.GetName()) if root else path
+        rows.append({'id':str(camera.GetGUID()),'label':label,'path':path,
+                     'rig':root.GetName() if root else '', 'camera':camera.GetName()})
+    counts={}
+    for row in rows:counts[row['label']]=counts.get(row['label'],0)+1
+    for row in rows:
+        if counts[row['label']]>1:row['label']+=' ['+row['id'][-8:]+']'
+    return rows
+
+
+def bundle_camera(camera):
+    if camera is None or camera.GetType() not in (c4d.Ocamera,1057516):return False
+    root=owning_rig(camera)
+    if root is None:return False
+    return any(camera.GetDataInstance().GetInt32(role)==output and root.GetDataInstance().GetInt32(role)==1
+               for role,output in ((ROLE_ID,8),(CK_ROLE_ID,9)))
+
+
+def active_bundle_camera(document):
+    draw=document.GetActiveBaseDraw() if document else None
+    camera=draw.GetSceneCamera(document) if draw else None
+    return str(camera.GetGUID()) if bundle_camera(camera) else None
+
+
+def filter_cameras(rows,query):
+    terms=query.casefold().split()
+    return [row for row in rows if all(term in row['path'].casefold() for term in terms)]
+
+
+def resolve_camera(document,ident):
+    for node in scene_objects(document):
+        if bundle_camera(node) and str(node.GetGUID())==ident:return node
+    raise ValueError('Camera is no longer in this document. Refresh the camera list.')
+
+
+def switch_camera(document,ident):
+    if document is None:raise ValueError('Open a document first')
+    camera=None if ident is None else resolve_camera(document,ident)
+    draw=document.GetActiveBaseDraw()
+    if draw is None:raise ValueError('No active viewport')
+    draw.SetSceneCamera(camera)
+    c4d.EventAdd()
+    return camera
+
+
+def select_camera_rig(document,ident):
+    camera=resolve_camera(document,ident)
+    node=owning_rig(camera) or camera
+    document.SetActiveObject(node)
+    c4d.EventAdd()
+    return node
+
+
+class CameraBrowser:
+    """Pending list selection is separate from the active viewport camera."""
+    def __init__(self):
+        self.document=None;self.rows=[];self.filtered=[];self.pending=None
+        self.query='';self.last_active=None
+
+    def refresh(self,document):
+        if document!=self.document:
+            self.pending=None;self.last_active=None
+        self.document=document;self.rows=scene_cameras(document)
+        self.filter(self.query)
+        self.sync_active()
+
+    def filter(self,query):
+        self.query=query;self.filtered=filter_cameras(self.rows,query)
+        visible={row['id'] for row in self.filtered}
+        if self.pending not in visible:
+            active=active_bundle_camera(self.document)
+            self.pending=active if active in visible else None
+
+    def sync_active(self):
+        active=active_bundle_camera(self.document)
+        if active!=self.last_active and any(row['id']==active for row in self.filtered):
+            self.pending=active
+        self.last_active=active
+        return active
+
+    def choose(self,ident,confirm=False):
+        if not any(row['id']==ident for row in self.filtered):raise ValueError('Choose a camera from the current list')
+        resolve_camera(self.document,ident)
+        self.pending=ident
+        if confirm or active_bundle_camera(self.document) is not None:
+            switch_camera(self.document,ident)
+            self.last_active=ident
+            return True
+        return False
+
+    def neighbour(self,step):
+        ids=[row['id'] for row in self.filtered]
+        index=ids.index(self.pending) if self.pending in ids else -1
+        destination=index+step
+        return ids[destination] if 0<=destination<len(ids) else None
+
+    def move(self,step):
+        ident=self.neighbour(step)
+        if ident is not None:return self.choose(ident)
+        return False
 
 
 def inspect_ck(root):
@@ -172,6 +312,30 @@ def report(root):
 
 
 class CineMenu(c4d.gui.GeDialog):
+    def refresh_browser(self,document,rescan=True):
+        if not hasattr(self,'browser'):self.browser=CameraBrowser()
+        if rescan:
+            self.browser.refresh(document)
+        self.browser.filter(self.GetString(301))
+        rows=self.browser.filtered
+        self._camera_choices={index+1:row['id'] for index,row in enumerate(rows)}
+        self.FreeChildren(302)
+        self.AddChild(302,0,'Choose camera')
+        for index,row in enumerate(rows):self.AddChild(302,index+1,row['label'])
+        self.browser_status(document)
+
+    def browser_status(self,document):
+        active=self.browser.sync_active()
+        ident=self.browser.pending
+        selected=next((i for i,guid in getattr(self,'_camera_choices',{}).items() if guid==ident),0)
+        self.SetInt32(302,selected)
+        total=len(self.browser.rows);shown=len(self.browser.filtered)
+        self.SetString(305,'%d cameras / %d matches | %s'%(total,shown,'Live switching' if active else 'Choose, then Activate camera'))
+        self.Enable(304,bool(selected))
+        self.Enable(310,bool(selected) and ident!=active)
+        self.Enable(308,self.browser.neighbour(-1) is not None)
+        self.Enable(309,self.browser.neighbour(1) is not None)
+
     def section(self, ident, title, columns):
         self.GroupBegin(ident,c4d.BFH_SCALEFIT,cols=columns,rows=0,title=title)
         self.GroupBorder(c4d.BORDER_GROUP_IN)
@@ -182,6 +346,7 @@ class CineMenu(c4d.gui.GeDialog):
             self.AddButton(ident,c4d.BFH_SCALEFIT,name=label)
 
     def CreateLayout(self):
+        self.layout_version=VERSION
         self.SetTitle('Camera Rigs '+VERSION)
         self.GroupBegin(90,c4d.BFH_SCALEFIT|c4d.BFV_TOP,cols=1,rows=0)
         self.GroupBorderSpace(8,6,8,6)
@@ -197,6 +362,20 @@ class CineMenu(c4d.gui.GeDialog):
         self.section(220,'Viewport',1)
         self.buttons(((205,'Look through camera'),))
         self.GroupEnd()
+        self.section(300,'Camera Rigs in scene',1)
+        self.AddStaticText(306,c4d.BFH_SCALEFIT,name='Search camera or rig name')
+        self.AddEditText(301,c4d.BFH_SCALEFIT)
+        self.GroupBegin(311,c4d.BFH_SCALEFIT,cols=3,rows=0)
+        self.AddButton(308,c4d.BFH_LEFT,initw=28,name='←')
+        self.AddComboBox(302,c4d.BFH_SCALEFIT,initw=260)
+        self.AddButton(309,c4d.BFH_RIGHT,initw=28,name='→')
+        self.GroupEnd()
+        self.AddStaticText(305,c4d.BFH_SCALEFIT,name='Refresh to find scene cameras')
+        self.GroupBegin(307,c4d.BFH_SCALEFIT,cols=2,rows=0)
+        self.buttons(((310,'Activate camera'),(304,'Select camera rig')))
+        self.GroupEnd()
+        self.buttons(((303,'Refresh cameras'),))
+        self.GroupEnd()
         self.section(230,'Tools',2)
         self.buttons(((206,'Inspect rig'),(209,'Help / Parameters')))
         self.GroupEnd()
@@ -207,9 +386,17 @@ class CineMenu(c4d.gui.GeDialog):
         self.SetTimer(300)
         return True
 
+    def InitValues(self):
+        self.refresh_browser(c4d.documents.GetActiveDocument())
+        return True
+
     def Timer(self, message):
         try:
             document = c4d.documents.GetActiveDocument()
+            if not hasattr(self,'browser') or document!=self.browser.document:
+                self.refresh_browser(document)
+            else:
+                self.browser_status(document)
             root = document.GetActiveObject() if document else None
             while root is not None and not any(root.GetDataInstance().GetInt32(role)==1 for role in (ROLE_ID,CK_ROLE_ID)):
                 root = root.GetUp()
@@ -226,9 +413,24 @@ class CineMenu(c4d.gui.GeDialog):
     def Command(self, button, message):
         try:
             document = c4d.documents.GetActiveDocument()
+            if button in (301,302,303,304,308,309,310):
+                if not hasattr(self,'browser') or document!=self.browser.document:
+                    self.refresh_browser(document)
+                    return True
+                if button in (301,303):
+                    self.refresh_browser(document,rescan=button==303)
+                else:
+                    index=self.GetInt32(302)
+                    if button in (308,309):self.browser.move(-1 if button==308 else 1)
+                    elif button==310 and self.browser.pending:self.browser.choose(self.browser.pending,confirm=True)
+                    elif button==304 and self.browser.pending:select_camera_rig(document,self.browser.pending)
+                    elif button==302 and index in self._camera_choices:self.browser.choose(self._camera_choices[index])
+                    self.browser_status(document)
+                return True
             if button in (101,102,103,104):
                 root,_,_ = create(document,button-101)
                 self.SetString(210,'Created '+root.GetName())
+                self.refresh_browser(document)
                 return True
             if button == 209:
                 c4d.gui.MessageDialog('Create Orbit, Trajectory, Free or CK_CAM POV. Edit native root User Data.\n\n'
@@ -259,11 +461,12 @@ class CineCommand(c4d.plugins.CommandData):
     dialog = None
 
     def Execute(self, document):
-        if self.dialog is None:
+        if self.dialog is None or getattr(self.dialog,'layout_version',None)!=VERSION:
+            if self.dialog is not None:self.dialog.Close()
             self.dialog = CineMenu()
         return self.dialog.Open(c4d.DLG_TYPE_ASYNC,pluginid=PLUGIN_ID,defaultw=340,defaulth=0)
 
     def RestoreLayout(self, secret):
-        if self.dialog is None:
+        if self.dialog is None or getattr(self.dialog,'layout_version',None)!=VERSION:
             self.dialog = CineMenu()
         return self.dialog.Restore(pluginid=PLUGIN_ID,secret=secret)

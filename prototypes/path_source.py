@@ -38,7 +38,7 @@ def path_static_node(node, root, driven):
         node = node.GetUp()
 
 
-def evaluated_path(source, root, driven=(), require_static=False):
+def evaluated_path(source, root, driven=(), require_static=False, animated=False):
     if not isinstance(source, c4d.BaseObject) or source.GetDocument() != root.GetDocument():
         raise ValueError('Assign Path to a spline or Tracer in this document')
     node = source
@@ -62,7 +62,8 @@ def evaluated_path(source, root, driven=(), require_static=False):
             stack = [controller]
             while stack:
                 item = stack.pop()
-                path_static_node(item, root, driven)
+                if not animated:
+                    path_static_node(item, root, driven)
                 # Child modes can consume descendants as well as direct links.
                 if source[c4d.MGTRACEROBJECT_MGMODE] != c4d.MGTRACEROBJECT_MGMODE_SINGLE:
                     stack.extend(item.GetChildren())

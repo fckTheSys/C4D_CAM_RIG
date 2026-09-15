@@ -3,7 +3,7 @@ from pathlib import Path
 import c4d
 
 ROLE_ID = 10699220
-VERSION = '0.5.4'
+VERSION = '0.5.5'
 
 
 def group(root, name, parent=None):
@@ -32,7 +32,7 @@ def controls(root, mode):
     def add(key, label, dtype, parent, default=None, minimum=None, maximum=None):
         if key == 'movement_mode' or key.endswith('_hint'):
             return
-        sections = {0: ('angle','radius','height','center'), 1: ('path','progress'), 2: ('free',)}
+        sections = {0: ('angle','radius','height','center'), 1: ('path','progress','animated_path'), 2: ('free',)}
         if any(key in keys and mode != owner for owner, keys in sections.items()):
             return
         bc = c4d.GetCustomDataTypeDefault(dtype)
@@ -88,6 +88,7 @@ def controls(root, mode):
     add('center', 'Orbit center', c4d.DTYPE_BASELISTLINK, orbit)
     add('path', 'Trajectory spline', c4d.DTYPE_BASELISTLINK, path)
     add('progress', 'Progress', c4d.DTYPE_REAL, path, 0., 0., 1.)
+    add('animated_path', 'Experimental: Animated Tracer', c4d.DTYPE_BOOL, path, False)
     add('free', 'Free controller', c4d.DTYPE_BASELISTLINK, free)
     for axis in ('x', 'y', 'z'):
         add('offset_' + axis, 'Local offset ' + axis.upper() + ' (cm)',
@@ -189,7 +190,7 @@ def build(document, mode=0, use_redshift=True):
         path_helpers = folder.parent / 'path_source.py'
     code = 'UD = ' + repr(slots) + '\nFIXED_MODE = ' + repr(mode) + '\n' + '\n\n'.join(
         path.read_text(encoding='utf-8') for path in
-        (path_helpers, path_helpers.with_name('look_source.py'), folder/'effects_math.py', folder/'inertia.py', folder/'runtime.py'))
+        (path_helpers, path_helpers.with_name('look_source.py'), folder/'effects_math.py', folder/'inertia.py', folder/'animated_path.py', folder/'runtime.py'))
     compile(code, 'Cine Prepare', 'exec')
     tag = c4d.BaseTag(c4d.Tpython)
     tag.SetName('Cine Prepare ' + VERSION)

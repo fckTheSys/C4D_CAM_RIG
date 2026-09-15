@@ -97,7 +97,13 @@ def execute(tag):
         path, progress = circle, (angle % 360.0) / 360.0
     elif mode == 1:
         path = source_link(root, read(root, 'path'), None, driven)
-        evaluated_path(path, root, driven)
+        animated=bool(read(root,'animated_path'))
+        desc=c4d.DescID(c4d.DescLevel(c4d.ID_USERDATA,c4d.DTYPE_SUBCONTAINER,0),c4d.DescLevel(UD['animated_path'],c4d.DTYPE_BOOL,0))
+        if root.FindCTrack(desc):
+            raise ValueError('Animated Tracer is a per-shot experimental setting; do not key it')
+        spline,world=evaluated_path(path, root, driven, animated=animated)
+        if animated:
+            animated_tracer_sampler(root,path,spline,world,driven,[])
         progress = max(0., min(1., number(root, 'progress')))
     else:
         free = source_link(root, read(root, 'free'), objects[11], driven)
@@ -156,6 +162,8 @@ def main():
         else:
             execute(op)
         message = ('Orbit', 'Trajectory', 'Free')[read(root, 'movement_mode')] + ' prototype: ready'
+        if FIXED_MODE==1 and read(root,'animated_path'):
+            message += ' [experimental animated Tracer]'
     except Exception as error:
         message = 'Stopped: ' + str(error)
         try:

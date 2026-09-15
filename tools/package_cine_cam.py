@@ -8,7 +8,7 @@ import zipfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.5.4'
+VERSION = '0.5.5'
 
 
 def main():
@@ -37,7 +37,7 @@ def main():
 
     files = {name:ROOT/'Cine_CAM'/name for name in ('Cine_CAM.pyp','menu.py','README.md')}
     files.update({'runtime/'+name:ROOT/'prototypes'/'cine_variants'/name
-                  for name in ('builder.py','runtime.py','inertia.py','effects_math.py')})
+                  for name in ('builder.py','runtime.py','inertia.py','effects_math.py','animated_path.py')})
     files.update({'ck_runtime/'+name:ROOT/'prototypes'/'simple_camera'/name
                   for name in ('builder.py','runtime.py','motion_math.py','path_math.py','curve_math.py','PARAMETERS_RU.md')})
     for runtime in ('runtime', 'ck_runtime'):
