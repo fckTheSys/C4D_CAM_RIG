@@ -46,3 +46,25 @@ up the prior installation. No public release or GitHub push was performed.
 
 Render-farm execution, motion blur and clean-host installation are not verified
 by these checks. CK_CAM continues to require Redshift. Legacy rigs are preserved.
+
+## Interactive route editing stress
+
+`tests/c4d_tracer_stress.py` passed against the installed 0.5.5 builder on
+2026-09-15: 257 checked evaluations per spline type, 1028 total, plus direct
+linked-object deletion probes. Tests repeatedly add/remove/reorder linked Nulls
+and change positions at a fixed frame, with inertia 0 and 0.65. Repeated-frame
+positions remain deterministic; without inertia they match native Tracer output.
+Empty lists, one controller, coincident points and 65 controllers stop cleanly;
+restoring a valid route resumes evaluation. The 64-controller boundary passes.
+
+Deleting a linked object while retaining its stale list entry reports
+`Stopped: Tracer contains a missing controller`. Removing that missing entry
+from the Tracer list restores the rig. This is an explicit validation stop,
+not automatic cleanup of user links.
+
+Median evaluation time was 0.54–0.62 ms and the largest sampled evaluation was
+34 ms in these small detached fixtures. This is not a production-scene benchmark.
+Evidence: `tests/artifacts/tracer_stress_2e9ca441d9cc4a508a58d1dca3a6bd56.json`.
+These checks cover editing topology between evaluations, not animating the
+controller list over time; historical topology animation remains unsupported.
+Undo/Redo and long-duration playback are not covered by this stress script.
