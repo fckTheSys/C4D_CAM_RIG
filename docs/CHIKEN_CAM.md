@@ -1,4 +1,7 @@
-# Chiken_CAM / CK_CAM 0.1.0
+# Chiken_CAM / CK_CAM 0.1.0 (legacy reference)
+
+The standalone CK_CAM reference is preserved for old scenes. New work should
+use the bundled `Camera Rigs 0.5.6` package and its CK_CAM POV creation action.
 
 **[Параметры для POV: что означает каждый регулятор, меньше/больше и примеры](../prototypes/simple_camera/PARAMETERS_RU.md)**
 

@@ -1,4 +1,4 @@
-# Camera Rigs 0.5.5 — private development package
+# Camera Rigs 0.5.6 — private development package
 
 Меню создания и обслуживания Cine Orbit / Trajectory / Free / CK_CAM POV в Cinema 4D 2026.
 Частный command ID: **10699230**. Не является публичным релизом.
@@ -6,7 +6,12 @@
 Полный русскоязычный справочник по режимам, параметрам и кнопкам:
 [Camera Rigs Guide](../docs/CAMERA_RIGS_GUIDE_RU.md).
 
-## Новое в 0.5.5
+## Новое в 0.5.6
+
+CK_CAM получил параметр **Full Walk Speed** (по умолчанию 40 см/с): медленная
+ходьба сохраняет читаемую амплитуду, а при остановке движение остаётся нулевым.
+World Target отображается оранжевой сферой, Local Target — голубым треугольником;
+их размер меняется через нативный Radius.
 
 **Камеры пакета в сцене:** поиск по имени рига/камеры, список, стрелки ←/→,
 Activate camera, Select camera rig и Refresh cameras. В списке только Cine/CK_CAM.

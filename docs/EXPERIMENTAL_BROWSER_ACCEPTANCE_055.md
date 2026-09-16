@@ -1,4 +1,7 @@
-# Camera Rigs 0.5.5 — verification
+# Camera Rigs 0.5.5 — historical verification
+
+This document records the 0.5.5 acceptance run. The current package is 0.5.6;
+see `ACCEPTANCE_056.md` for the current release evidence.
 
 Verified on 2026-09-15 in Cinema 4D 2026.2 (2026200), Python 3.11.4.
 
