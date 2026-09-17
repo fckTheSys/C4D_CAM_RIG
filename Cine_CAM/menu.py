@@ -7,7 +7,7 @@ from pathlib import Path
 import c4d
 
 PLUGIN_ID = 10699230
-VERSION = '0.5.6'
+VERSION = '0.5.7'
 CK_ROLE_ID = 10699101
 ROLE_ID = 10699220
 
@@ -26,18 +26,27 @@ def builder(ck=False):
 def create(document, mode):
     if document is None:
         raise ValueError('Open a document first')
-    root, objects, ids = builder(True).build(document) if mode == 3 else builder().build(document, mode)
-    if mode == 3:
-        root.SetName('CK_CAM POV')
-    camera=objects[9 if mode==3 else 8]
     names={node.GetName() for node in scene_objects(document)}
+    if mode == 3:
+        number=1
+        while 'CK_CAM_%03d'%number in names:
+            number+=1
+        # Builder names Camera and targets after the root and owns L_CAM_RIG.
+        root, objects, ids = builder(True).build(document, 'CK_CAM_%03d'%number)
+        root[c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
+        root[c4d.ID_BASEOBJECT_COLOR]=c4d.Vector(*colorsys.hsv_to_rgb(random.random(),.65,.9))
+        document.SetActiveObject(root)
+        c4d.EventAdd()
+        return root, objects, ids
+    root, objects, ids = builder().build(document, mode)
+    camera=objects[8]
     base=root.GetName();number=1
     while base+' %03d'%number in names or 'CAM | '+base+' %03d'%number in names:
         number+=1
     root.SetName(base+' %03d'%number)
     camera.SetName('CAM | '+root.GetName())
     objects[3].SetName('World Target | '+root.GetName())
-    objects[10 if mode==3 else 14].SetName('Local Target | '+root.GetName())
+    objects[14].SetName('Local Target | '+root.GetName())
     root[c4d.ID_BASEOBJECT_USECOLOR]=c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
     root[c4d.ID_BASEOBJECT_COLOR]=c4d.Vector(*colorsys.hsv_to_rgb(random.random(),.65,.9))
     document.SetActiveObject(root)
@@ -72,7 +81,7 @@ def scene_cameras(document):
         while node is not None:
             names.append(node.GetName());node=node.GetUp()
         path=' / '.join(reversed(names))
-        label=(root.GetName()+' / '+camera.GetName()) if root else path
+        label=root.GetName() if root and root.GetName()==camera.GetName() else (root.GetName()+' / '+camera.GetName()) if root else path
         rows.append({'id':str(camera.GetGUID()),'label':label,'path':path,
                      'rig':root.GetName() if root else '', 'camera':camera.GetName()})
     counts={}
@@ -307,6 +316,37 @@ def reset(root, action):
     c4d.EventAdd()
 
 
+def selected_ck(document):
+    root=selected(document)
+    if root.GetDataInstance().GetInt32(CK_ROLE_ID)!=1:
+        raise ValueError('Select a CK_CAM rig')
+    return root
+
+
+def sync_names(root):
+    """Camera and targets follow the root name; one Undo step."""
+    ck=builder(True);obj=ck.rig_nodes(root);document=root.GetDocument()
+    document.StartUndo()
+    try:
+        for role in (9,3,10):
+            if role in obj:document.AddUndo(c4d.UNDOTYPE_CHANGE_SMALL,obj[role])
+        ck.apply_names(obj,root.GetName())
+    finally:
+        document.EndUndo()
+    c4d.EventAdd()
+
+
+def upgrade_ck(root):
+    c4d.StopAllThreads()
+    result=builder(True).upgrade(root.GetDocument(),root)
+    c4d.EventAdd()
+    if not result['changed']:
+        return root.GetName()+': runtime is already current. Service nodes are on L_CAM_RIG.'
+    basis='its top-level copy' if result['reference']=='top_level_copy' else 'the previous runtime'
+    detail='camera matches %s on %d frames (max error %.2g)'%(basis,len(result['frames']),result['max_error'])
+    return root.GetName()+': upgraded to CK_CAM '+builder(True).VERSION+'; '+detail+'.'
+
+
 def report(root):
     mode, objects, ids = inspect(root)
     return '\n'.join((root.GetName(), 'Type: '+('Orbit','Trajectory','Free','CK_CAM POV')[mode],
@@ -381,7 +421,7 @@ class CineMenu(c4d.gui.GeDialog):
         self.buttons(((303,'Refresh cameras'),))
         self.GroupEnd()
         self.section(230,'Tools',2)
-        self.buttons(((206,'Inspect rig'),(209,'Help / Parameters')))
+        self.buttons(((206,'Inspect rig'),(209,'Help / Parameters'),(250,'Sync CK_CAM names'),(251,'Upgrade CK_CAM')))
         self.GroupEnd()
         self.section(240,'Reset  /  Key protection',2)
         self.buttons(((207,'Reset framing'),(208,'Disable effects')))
@@ -411,7 +451,7 @@ class CineMenu(c4d.gui.GeDialog):
         except Exception:
             label, enabled = 'Select a rig', False
         self.SetString(210,label)
-        for button in range(201,209):
+        for button in (*range(201,209),250,251):
             self.Enable(button,enabled)
 
     def Command(self, button, message):
@@ -445,6 +485,9 @@ class CineMenu(c4d.gui.GeDialog):
                     'Both refuse controls with animation keys; neither deletes keys.\n\n'
                     'Aim mode: Manual / World Target / Local Target. Target button selects the active look controller. '
                     'Move/key Local Target XYZ; farther Z gives gentler aiming. Pan/Tilt/Roll add offsets. '
+                    'CK_CAM may sit inside static Null groups (no transform keys, scale 1). '
+                    'Service nulls live on layer L_CAM_RIG: keep its Expressions/Animation/Generators on. '
+                    'Sync CK_CAM names renames Camera and targets after the rig. Upgrade CK_CAM updates an older rig after checking the camera is unchanged.\n\n'
                     'Saved rigs need no Camera Rigs plugin. CK_CAM requires Redshift. See README.md in the plugin folder.')
                 return True
             root = selected(document)
@@ -454,6 +497,10 @@ class CineMenu(c4d.gui.GeDialog):
                 c4d.gui.MessageDialog(report(root))
             elif button in (207,208):
                 reset(root,'framing' if button==207 else 'effects')
+            elif button == 250:
+                sync_names(selected_ck(document))
+            elif button == 251:
+                c4d.gui.MessageDialog(upgrade_ck(selected_ck(document)))
             self.SetString(210,root.GetName())
         except Exception as error:
             self.SetString(210,str(error))

@@ -122,7 +122,8 @@ Additional live evidence under `tests/artifacts/simple_camera/`:
   it does not demonstrate Redshift motion blur.
 
 These are bounded checks, not proof for arbitrary external driver graphs or all
-animation durations. V1 supports a static top-level rigid root at scale1 and a
+animation durations. The root may be top-level or inside static plain Null groups with world scale 1
+(0.5.7), with service nulls on layer `L_CAM_RIG`, and a
 static open Bezier path; directly key root controls and the Target. Do not key
 mode, deform the path, add expression dependencies, or key driven PSR channels.
 Integration is capped at1000 seconds from document start. Diagnostics appear in

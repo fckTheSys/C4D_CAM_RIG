@@ -201,9 +201,47 @@ def motion_phases(data, read, document, t):
     return phases
 
 
+_TRANSFORM_IDS = {getattr(c4d, name) for name in (
+    'ID_BASEOBJECT_REL_POSITION', 'ID_BASEOBJECT_REL_ROTATION', 'ID_BASEOBJECT_REL_SCALE',
+    'ID_BASEOBJECT_POSITION', 'ID_BASEOBJECT_ROTATION', 'ID_BASEOBJECT_SCALE',
+    'ID_BASEOBJECT_FROZEN_POSITION', 'ID_BASEOBJECT_FROZEN_ROTATION', 'ID_BASEOBJECT_FROZEN_SCALE')
+    if hasattr(c4d, name)}
+
+
+def validate_groups(root):
+    # Groups are organisational: static plain Nulls. Motion integrals assume a
+    # time-invariant root frame, so animated or driven parents are refused.
+    group = root.GetUp()
+    while group is not None:
+        label = "Group '" + group.GetName() + "'"
+        if group.GetType() != c4d.Onull:
+            raise ValueError(label + ' must be a plain Null to contain a camera rig')
+        if any(tr.GetDescriptionID()[0].id in _TRANSFORM_IDS for tr in group.GetCTracks()):
+            raise ValueError(label + ' cannot have transform keys; animate rig controls instead')
+        for tag in group.GetTags():
+            if tag.GetInfo() & c4d.TAG_EXPRESSION and tag.GetType() != ANNOTATION_TAG:
+                raise ValueError(label + " cannot carry expression tag '" + tag.GetName() + "'")
+        group = group.GetUp()
+    mg = root.GetMg()
+    axes = (mg.v1, mg.v2, mg.v3)
+    if (any(abs(v.GetLength()-1) > 1e-7 for v in axes) or abs(mg.v1*mg.v2) > 1e-7 or
+            abs(mg.v2*mg.v3) > 1e-7 or abs(mg.v1*mg.v3) > 1e-7 or (mg.v1 % mg.v2)*mg.v3 < 0):
+        raise ValueError('Rig root and its groups must keep scale 1 without mirroring or shear')
+
+
+def validate_layers(root, objects):
+    document = root.GetDocument()
+    for node in objects.values():
+        data = node.GetLayerData(document)
+        if data and not (data.get('expressions', True) and data.get('animation', True) and data.get('generators', True)):
+            layer = node.GetLayerObject(document)
+            raise ValueError("Layer '" + (layer.GetName() if layer else '?') + "' must keep Expressions, "
+                             "Animation and Generators enabled (" + node.GetName() + ')')
+
+
 def validate(root, objects):
-    if root.GetUp() is not None or (root.GetRelScale()-c4d.Vector(1)).GetLength()>1e-10:
-        raise ValueError('Prototype requires top-level root with scale 1')
+    validate_groups(root)
+    validate_layers(root, objects)
     for tr in root.GetCTracks():
         if tr.GetBefore()!=c4d.CLOOP_CONSTANT or tr.GetAfter()!=c4d.CLOOP_CONSTANT:
             raise ValueError('Prototype requires constant track extrapolation')

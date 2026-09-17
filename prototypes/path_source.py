@@ -2,6 +2,8 @@
 import c4d
 
 TRACER_TYPE = 1018655
+# Annotation reports TAG_EXPRESSION but never drives transforms.
+ANNOTATION_TAG = 1030659
 
 
 def path_vector_stamp(v):
@@ -31,7 +33,7 @@ def path_static_node(node, root, driven):
             # Rig UD keys are camera controls, not animated source geometry.
             if node != root or any(t.GetDescriptionID()[0].id != c4d.ID_USERDATA for t in node.GetCTracks()):
                 raise ValueError('Path must be static; animate camera Progress instead')
-        if any(t.GetInfo() & c4d.TAG_EXPRESSION and not
+        if any(t.GetInfo() & c4d.TAG_EXPRESSION and t.GetType() != ANNOTATION_TAG and not
                (node.GetType() == TRACER_TYPE and t.GetType() == 1019326)
                for t in node.GetTags()) and node != root:
             raise ValueError('Static path controllers cannot have expression drivers')

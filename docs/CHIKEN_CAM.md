@@ -24,7 +24,10 @@ timeline evaluation returns to the recorded curve.
 
 ## Supported sources
 
-The v1 rig requires a top-level, scale-1 root and one static, open Bezier path.
+Since 0.5.7 the root may sit inside groups: plain, static Nulls (no transform keys,
+no expression tags except Annotation) with world scale 1. Service nulls live on
+the `L_CAM_RIG` layer; keep its Expressions/Animation/Generators enabled. The rig
+needs one static, open Bezier path.
 Do not animate/deform the Path, add expression drivers, animate `Use Target`, or
 key PSR on Route, Body, Aim, Look, FX, or Camera. `Status` reports a diagnostic
 when the source is unsupported.
